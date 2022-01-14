@@ -57,7 +57,7 @@ namespace Cpu
         bool has_extension() {
             return size==0x20000;}
         void setctrl(uint16_t c) {
-            if (has_extension()) {
+            if (has_extension() && (c & 0x0c)) {
                 c &= 0x80fd; Spi::clock(ctrl, c);
                 ctrl = c; bank = (c & 0xC0) >> 6; } }
         uint16_t getctrl() { return ctrl; }
@@ -511,9 +511,9 @@ namespace Cpu
             case SDCARD:
             case DEVROM:
             {
-                setRAM(VIDEO_MODE_D, 0xEC);
-                setRAM(VIDEO_MODE_B, 0x0A);
-                setRAM(VIDEO_MODE_C, 0x0A);
+              //setRAM(VIDEO_MODE_D, 0xEC);
+              //setRAM(VIDEO_MODE_B, 0x0A);
+              //setRAM(VIDEO_MODE_C, 0x0A);
             }
             break;
 
@@ -1033,7 +1033,7 @@ namespace Cpu
         switch(bus)
         {
             case 0: B=S._D;                                            break;
-            case 1: if (!W) B = _cRAM[addr]; else _RAM.setctrl(addr);   break;
+            case 1: if (!W) B = _cRAM[addr]; else _RAM.setctrl(addr);  break;
             case 2: B=S._AC;                                           break;
             case 3: B=_IN;                                             break;
 
