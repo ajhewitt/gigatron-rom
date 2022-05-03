@@ -161,6 +161,9 @@ from asm import *
 import gcl0x as gcl
 import font_v4 as font
 
+# Enable patches for 512k extension
+WITH_512K_BOARD = defined('WITH_512K_BOARD')
+
 enableListing()
 #-----------------------------------------------------------------------
 #
@@ -688,11 +691,14 @@ st([Y,vIRQ_v5+1])               #22
 st([soundTimer])                #23 soundTimer
 assert userCode&255 == 0
 st([vLR])                       #24 vLR
-ld(userCode>>8)                 #25
-st([vLR+1])                     #26
-ld('nopixels')                  #27 Video mode 3 (fast)
-st([videoModeB])                #28
-st([videoModeC])                #29
+if WITH_512K_BOARD:
+  st([videoModeC])              #   25
+ld(userCode>>8)                 #25 26
+st([vLR+1])                     #26 27
+ld('nopixels')                  #27 28 Video mode 3 (fast)
+st([videoModeB])                #28 29
+if not WITH_512K_BOARD:
+  st([videoModeC])              #29
 st([videoModeD])                #30
 ld('SYS_Exec_88')               #31 SYS_Exec_88
 st([sysFn])                     #32 High byte (remains) 0
@@ -1319,7 +1325,10 @@ st(0,[0])                       #46(!) Reinitialize carry lookup, for robustness
 ld([videoY])                    #47
 anda(6)                         #48
 beq('vBlankSample')             #49
-ld([sample])                    #50
+if not WITH_512K_BOARD:
+  ld([sample])                    #50
+else:
+  ld([sample],Y)                  #50
 
 label('vBlankNormal')
 runVcpu(199-51, 'AB-D line 1-36')#51 Application cycles (vBlank scan lines without sound sample update)
@@ -1327,12 +1336,25 @@ bra('sound1')                   #199
 ld([videoSync0],OUT)            #0 <New scan line start>
 
 label('vBlankSample')
-ora(0x0f)                       #51 New sound sample is ready
-anda([xoutMask])                #52
-st([xout])                      #53
-st(sample, [sample])            #54 Reset for next sample
+if not WITH_512K_BOARD:
+  ora(0x0f)                       #51 New sound sample is ready
+  anda([xoutMask])                #52
+  st([xout])                      #53
+  st(sample, [sample])            #54 Reset for next sample
+  runVcpu(199-55,'--C- line 3-39')#55 Application cycles (vBlank scan lines with sound sample update)
+else:
+  ld([xoutMask])                  #51
+  bmi(pc()+3)                     #52
+  bra(pc()+3)                     #53
+  nop()                           #54
+  ctrl(Y,0xD0)                    #54 instead of #46 (wrong by 1us)
+  ld([sample])                    #55
+  ora(0x0f)                       #56 New sound sample is ready
+  anda([xoutMask])                #57
+  st([xout])                      #58
+  st(sample, [sample])            #59 Reset for next sample
+  runVcpu(199-60,'--C- line 3-39')#60 Application cycles (vBlank scan lines with sound sample update)
 
-runVcpu(199-55, '--C- line 3-39')#55 Application cycles (vBlank scan lines with sound sample update)
 bra('sound1')                   #199
 ld([videoSync0],OUT)            #0 <New scan line start>
 
@@ -1391,21 +1413,39 @@ label('.restart#66')
 ld([buttonState])               #66 Check [Select] to switch modes
 xora(~buttonSelect)             #67 Only trigger when just [Select] is pressed
 bne('.select#70')               #68
-ld([videoModeC])                #69
-bmi('.select#72')               #70 Branch when line C is off
-ld([videoModeB])                #71 Rotate: Off->D->B->C
-st([videoModeC])                #72
-ld([videoModeD])                #73
-st([videoModeB])                #74
-bra('.select#77')               #75
-label('.select#72')
-ld('nopixels')                  #72,76
-ld('pixels')                    #73 Reset: On->D->B->C
-st([videoModeC])                #74
-st([videoModeB])                #75
-nop()                           #76
-label('.select#77')
-st([videoModeD])                #77
+
+if not WITH_512K_BOARD:
+  ld([videoModeC])                #69
+  bmi('.select#72')               #70 Branch when line C is off
+  ld([videoModeB])                #71 Rotate: Off->D->B->C
+  st([videoModeC])                #72
+  ld([videoModeD])                #73
+  st([videoModeB])                #74
+  bra('.select#77')               #75
+  label('.select#72')
+  ld('nopixels')                  #72,76
+  ld('pixels')                    #73 Reset: On->D->B->C
+  st([videoModeC])                #74
+  st([videoModeB])                #75
+  nop()                           #76
+  label('.select#77')
+  st([videoModeD])                #77
+else:
+  ld([videoModeB])                #69
+  xora('nopixels')                #70
+  beq('.select#73')               #71
+  ld([videoModeD])                #72
+  st([videoModeB])                #73
+  bra('.select#76')               #74
+  ld('nopixels')                  #75
+  label('.select#73')
+  ld('pixels')                    #73
+  st([videoModeB])                #74
+  nop()                           #75
+  label('.select#76')
+  st([videoModeD])                #76
+  nop()                           #77
+
 wait(188-78)                    #78 Don't waste code space expanding runVcpu here
 # AC==255 now
 st([buttonState])               #188
@@ -1445,7 +1485,10 @@ fillers(until=0xff)
 #-----------------------------------------------------------------------
 
 assert pc() == 0x1ff            # Enables runVcpu() to re-enter into the next page
-bra('sound3')                   #200,0 <New scan line start>
+if not WITH_512K_BOARD:
+  bra('sound3')                   #200,0 <New scan line start>
+else:
+  ld(syncBits,OUT)                #200,0 <New scan line start>
 
 #-----------------------------------------------------------------------
 #
@@ -1453,145 +1496,330 @@ bra('sound3')                   #200,0 <New scan line start>
 #
 #-----------------------------------------------------------------------
 align(0x100, size=0x100)
-ld([channel])                   #1 Advance to next sound channel
 
-# Back porch A: first of 4 repeated scan lines
-# - Fetch next Yi and store it for retrieval in the next scan lines
-# - Calculate Xi from dXi, but there is no cycle time left to store it as well
-label('videoA')
-ld('videoB')                    #29 1st scanline of 4 (always visible)
-st([nextVideo])                 #30
-ld(videoTable>>8,Y)             #31
-ld([videoY],X)                  #32
-ld([Y,X])                       #33
-st([Y,Xpp])                     #34 Just X++
-st([frameY])                    #35
-ld([Y,X])                       #36
-adda([frameX],X)                #37
-label('pixels')
-ld([frameY],Y)                  #38
-ld(syncBits)                    #39
 
-# Stream 160 pixels from memory location <Yi,Xi> onwards
-# Superimpose the sync signal bits to be robust against misprogramming
-for i in range(qqVgaWidth):
-  ora([Y,Xpp],OUT)              #40-199 Pixel burst
-ld(syncBits,OUT)                #0 <New scan line start> Back to black
+if not WITH_512K_BOARD:
 
-# Front porch
-ld([channel])                   #1 Advance to next sound channel
-label('sound3')                 # Return from vCPU interpreter
-anda([channelMask])             #2
-adda(1)                         #3
-ld(syncBits^hSync,OUT)          #4 Start horizontal pulse
+  ld([channel])                   #1 Advance to next sound channel
 
-# Horizontal sync and sound channel update for scanlines outside vBlank
-label('sound2')
-st([channel],Y)                 #5
-ld(0x7f)                        #6
-anda([Y,oscL])                  #7
-adda([Y,keyL])                  #8
-st([Y,oscL])                    #9
-anda(0x80,X)                    #10
-ld([X])                         #11
-adda([Y,oscH])                  #12
-adda([Y,keyH])                  #13
-st([Y,oscH] )                   #14
-anda(0xfc)                      #15
-xora([Y,wavX])                  #16
-ld(AC,X)                        #17
-ld([Y,wavA])                    #18
-ld(soundTable>>8,Y)             #19
-adda([Y,X])                     #20
-bmi(pc()+3)                     #21
-bra(pc()+3)                     #22
-anda(63)                        #23
-ld(63)                          #23(!)
-adda([sample])                  #24
-st([sample])                    #25
+  # Back porch A: first of 4 repeated scan lines
+  # - Fetch next Yi and store it for retrieval in the next scan lines
+  # - Calculate Xi from dXi, but there is no cycle time left to store it as well
+  label('videoA')
+  ld('videoB')                    #29 1st scanline of 4 (always visible)
+  st([nextVideo])                 #30
+  ld(videoTable>>8,Y)             #31
+  ld([videoY],X)                  #32
+  ld([Y,X])                       #33
+  st([Y,Xpp])                     #34 Just X++
+  st([frameY])                    #35
+  ld([Y,X])                       #36
+  adda([frameX],X)                #37
+  label('pixels')
+  ld([frameY],Y)                  #38
+  ld(syncBits)                    #39
 
-ld([xout])                      #26 Gets copied to XOUT
-bra([nextVideo])                #27
-ld(syncBits,OUT)                #28 End horizontal pulse
+  # Stream 160 pixels from memory location <Yi,Xi> onwards
+  # Superimpose the sync signal bits to be robust against misprogramming
+  for i in range(qqVgaWidth):
+    ora([Y,Xpp],OUT)              #40-199 Pixel burst
+  ld(syncBits,OUT)                #0 <New scan line start> Back to black
 
-# Back porch B: second of 4 repeated scan lines
-# - Recompute Xi from dXi and store for retrieval in the next scan lines
-label('videoB')
-ld('videoC')                    #29 2nd scanline of 4
-st([nextVideo])                 #30
-ld(videoTable>>8,Y)             #31
-ld([videoY])                    #32
-adda(1,X)                       #33
-ld([frameX])                    #34
-adda([Y,X])                     #35
-bra([videoModeB])               #36
-st([frameX],X)                  #37 Store in RAM and X
+  # Front porch
+  ld([channel])                   #1 Advance to next sound channel
+  label('sound3')                 # Return from vCPU interpreter
+  anda([channelMask])             #2
+  adda(1)                         #3
+  ld(syncBits^hSync,OUT)          #4 Start horizontal pulse
 
-# Back porch C: third of 4 repeated scan lines
-# - Nothing new to for video do as Yi and Xi are known,
-# - This is the time to emit and reset the next sound sample
-label('videoC')
-ld('videoD')                    #29 3rd scanline of 4
-st([nextVideo])                 #30
-ld([sample])                    #31 New sound sample is ready (didn't fit in the audio loop)
-ora(0x0f)                       #32
-anda([xoutMask])                #33
-st([xout])                      #34 Update [xout] with new sample (4 channels just updated)
-st(sample, [sample])            #35 Reset for next sample
-bra([videoModeC])               #36
-ld([frameX],X)                  #37
+  # Horizontal sync and sound channel update for scanlines outside vBlank
+  label('sound2')
+  st([channel],Y)                 #5
+  ld(0x7f)                        #6
+  anda([Y,oscL])                  #7
+  adda([Y,keyL])                  #8
+  st([Y,oscL])                    #9
+  anda(0x80,X)                    #10
+  ld([X])                         #11
+  adda([Y,oscH])                  #12
+  adda([Y,keyH])                  #13
+  st([Y,oscH] )                   #14
+  anda(0xfc)                      #15
+  xora([Y,wavX])                  #16
+  ld(AC,X)                        #17
+  ld([Y,wavA])                    #18
+  ld(soundTable>>8,Y)             #19
+  adda([Y,X])                     #20
+  bmi(pc()+3)                     #21
+  bra(pc()+3)                     #22
+  anda(63)                        #23
+  ld(63)                          #23(!)
+  adda([sample])                  #24
+  st([sample])                    #25
 
-# Back porch D: last of 4 repeated scan lines
-# - Calculate the next frame index
-# - Decide if this is the last line or not
-label('videoD')                 # Default video mode
-ld([frameX], X)                 #29 4th scanline of 4
-ld([videoY])                    #30
-suba((120-1)*2)                 #31
-beq('.lastpixels#34')           #32
-adda(120*2)                     #33 More pixel lines to go
-st([videoY])                    #34
-ld('videoA')                    #35
-bra([videoModeD])               #36
-st([nextVideo])                 #37
+  ld([xout])                      #26 Gets copied to XOUT
+  bra([nextVideo])                #27
+  ld(syncBits,OUT)                #28 End horizontal pulse
 
-label('.lastpixels#34')
-if soundDiscontinuity == 1:
-  st(sample, [sample])          #34 Sound continuity
+  # Back porch B: second of 4 repeated scan lines
+  # - Recompute Xi from dXi and store for retrieval in the next scan lines
+  label('videoB')
+  ld('videoC')                    #29 2nd scanline of 4
+  st([nextVideo])                 #30
+  ld(videoTable>>8,Y)             #31
+  ld([videoY])                    #32
+  adda(1,X)                       #33
+  ld([frameX])                    #34
+  adda([Y,X])                     #35
+  bra([videoModeB])               #36
+  st([frameX],X)                  #37 Store in RAM and X
+
+  # Back porch C: third of 4 repeated scan lines
+  # - Nothing new to for video do as Yi and Xi are known,
+  # - This is the time to emit and reset the next sound sample
+  label('videoC')
+  ld('videoD')                    #29 3rd scanline of 4
+  st([nextVideo])                 #30
+  ld([sample])                    #31 New sound sample is ready (didn't fit in audio loop)
+  ora(0x0f)                       #32
+  anda([xoutMask])                #33
+  st([xout])                      #34 Update [xout] with new sample (4 channels just updated)
+  st(sample, [sample])            #35 Reset for next sample
+  bra([videoModeC])               #36
+  ld([frameX],X)                  #37
+
+  # Back porch D: last of 4 repeated scan lines
+  # - Calculate the next frame index
+  # - Decide if this is the last line or not
+  label('videoD')                 # Default video mode
+  ld([frameX], X)                 #29 4th scanline of 4
+  ld([videoY])                    #30
+  suba((120-1)*2)                 #31
+  beq('.lastpixels#34')           #32
+  adda(120*2)                     #33 More pixel lines to go
+  st([videoY])                    #34
+  ld('videoA')                    #35
+  bra([videoModeD])               #36
+  st([nextVideo])                 #37
+
+  label('.lastpixels#34')
+  if soundDiscontinuity == 1:
+    st(sample, [sample])          #34 Sound continuity
+  else:
+    nop()                         #34
+  ld('videoE')                    #35 No more pixel lines to go
+  bra([videoModeD])               #36
+  st([nextVideo])                 #37
+
+  # Back porch "E": after the last line
+  # - Go back and and enter vertical blank (program page 2)
+  label('videoE') # Exit visible area
+  ld(hi('vBlankStart'),Y)         #29 Return to vertical blank interval
+  jmp(Y,'vBlankStart')            #30
+  ld(syncBits)                    #31
+
+  # Video mode that blacks out one or more pixel lines from the top of screen.
+  # This yields some speed, but also frees up screen memory for other purposes.
+  # Note: Sound output becomes choppier the more pixel lines are skipped
+  # Note: The vertical blank driver leaves 0x80 behind in [videoSync1]
+  label('videoF')
+  ld([videoSync1])                #29 Completely black pixel line
+  adda(0x80)                      #30
+  st([videoSync1],X)              #31
+  ld([frameX])                    #32
+  suba([X])                       #33 Decrements every two VGA scanlines
+  beq('.videoF#36')               #34
+  st([frameX])                    #35
+  bra('nopixels')                 #36
+  label('.videoF#36')
+  ld('videoA')                    #36,37 Transfer to visible screen area
+  st([nextVideo])                 #37
+  #
+  # Alternative for pixel burst: faster application mode
+  label('nopixels')
+  runVcpu(200-38, 'ABCD line 40-520',
+          returnTo=0x1ff)         #38 Application interpreter (black scanlines)
+
 else:
-  nop()                         #34
-ld('videoE')                    #35 No more pixel lines to go
-bra([videoModeD])               #36
-st([nextVideo])                 #37
 
-# Back porch "E": after the last line
-# - Go back and and enter vertical blank (program page 2)
-label('videoE') # Exit visible area
-ld(hi('vBlankStart'),Y)         #29 Return to vertical blank interval
-jmp(Y,'vBlankStart')            #30
-ld(syncBits)                    #31
+  # Front porch
+  ld([channel])                   #1 Advance to next sound channel
+  anda([channelMask])             #2
+  adda(1)                         #3
+  ld(syncBits^hSync,OUT)          #4 Start horizontal pulse (4)
 
-# Video mode that blacks out one or more pixel lines from the top of screen.
-# This yields some speed, but also frees up screen memory for other purposes.
-# Note: Sound output becomes choppier the more pixel lines are skipped
-# Note: The vertical blank driver leaves 0x80 behind in [videoSync1]
-label('videoF')
-ld([videoSync1])                #29 Completely black pixel line
-adda(0x80)                      #30
-st([videoSync1],X)              #31
-ld([frameX])                    #32
-suba([X])                       #33 Decrements every two VGA scanlines
-beq('.videoF#36')               #34
-st([frameX])                    #35
-bra('nopixels')                 #36
-label('.videoF#36')
-ld('videoA')                    #36,37 Transfer to visible screen area
-st([nextVideo])                 #37
-#
-# Alternative for pixel burst: faster application mode
-label('nopixels')
-runVcpu(200-38, 'ABCD line 40-520',
-  returnTo=0x1ff)               #38 Application interpreter (black scanlines)
+  # Horizontal sync and sound channel update for scanlines outside vBlank
+  label('sound2')
+  st([channel],Y)                 #5
+  ld(0x7f)                        #6
+  anda([Y,oscL])                  #7
+  adda([Y,keyL])                  #8
+  st([Y,oscL])                    #9
+  anda(0x80,X)                    #10
+  ld([X])                         #11
+  adda([Y,oscH])                  #12
+  adda([Y,keyH])                  #13
+  st([Y,oscH] )                   #14
+  anda(0xfc)                      #15
+  xora([Y,wavX])                  #16
+  ld(AC,X)                        #17
+  ld([Y,wavA])                    #18
+  ld(soundTable>>8,Y)             #19
+  adda([Y,X])                     #20
+  bmi(pc()+3)                     #21
+  bra(pc()+3)                     #22
+  anda(63)                        #23
+  ld(63)                          #23(!)
+  adda([sample])                  #24
+  st([sample])                    #25
+  ld([xout])                      #26 Gets copied to XOUT
+  bra([nextVideo])                #27
+  ld(syncBits,OUT)                #28 End horizontal pulse
+
+  # Back porch A: first of 4 repeated scan lines
+  # - Fetch next Yi and store it for retrieval in the next scan lines
+  # - Calculate Xi from dXi, but there is no cycle time left to store it as well
+  label('videoA')
+  ld('videoB')                    #29 1st scanline of 4 (always visible)
+  st([nextVideo])                 #30
+  ld(videoTable>>8,Y)             #31
+  ld([videoY],X)                  #32
+  ld([Y,X])                       #33
+  st([Y,Xpp])                     #34 Just X++
+  st([frameY])                    #35
+  ld([Y,X])                       #36
+  adda([frameX],X)                #37
+  ld([frameY],Y)                  #38
+  ld(syncBits)                    #39
+  ora([Y,Xpp],OUT)                #40 begin of pixel burst
+  runVcpu(200-41,                 #41
+          'A--- line 40-520',
+          returnTo=0x1ff )
+
+  # Back porch B: second of 4 repeated scan lines
+  # - Recompute Xi from dXi and store for retrieval in the next scan lines
+  label('videoB')
+  ld(videoTable>>8,Y)             #29 2nd scanline of 4
+  ld([videoY])                    #30
+  adda(1,X)                       #31
+  ld([frameX])                    #32
+  adda([Y,X])                     #33
+  st([frameX],X)                  #34 Store in RAM and X
+  nop()                           #35
+  ld([frameY],Y)                  #36
+  ld(syncBits)                    #37
+  bra([videoModeB])               #38
+  bra(pc()+2)                     #39
+  nop()                           #40 'pixels' or 'nopixels'
+  ld('videoC')                    #41
+  st([nextVideo])                 #42
+  ld([videoModeC])                #43 New role for videoModeC
+  anda(1)                         #44
+  adda([frameY])                  #45
+  st([frameY])                    #46
+  runVcpu(200-47,                 #47
+          '-B-- line 40-520',
+          returnTo=0x1ff )
+
+  # Back porch C: third of 4 repeated scan lines
+  # - Nothing new to for video do as Yi and Xi are known,
+  # - This is the time to emit and reset the next sound sample
+  label('videoC')
+  ld('videoD')                    #29 3rd scanline of 4
+  st([nextVideo])                 #30
+  ld([sample])                    #31 New sound sample is ready (didn't fit in audio loop)
+  ora(0x0f)                       #32
+  anda([xoutMask])                #33
+  st([xout])                      #34 Update [xout] with new sample (4 channels just updated)
+  ld([frameX],X)                  #35
+  nop()                           #36
+  nop()                           #37
+  ld([frameY],Y)                  #38
+  ld(syncBits)                    #39
+  ora([Y,Xpp], OUT)               #40 Always outputs pixels on C lines
+  ld([sample],Y)                  #41
+  st(sample, [sample])            #42 Reset for next sample
+  ld([xoutMask])                  #43
+  bmi(pc()+3)                     #44
+  bra(pc()+3)                     #45
+  nop()                           #46
+  ctrl(Y,0xD0);                   #46 Forward audio to PWM (only when audio is active)
+  ld([vTmp])                      #47
+  runVcpu(200-48,                 #48
+          '--C- line 40-520',
+        returnTo=0x1ff )
+
+  # Back porch D: last of 4 repeated scan lines
+  # - Calculate the next frame index
+  # - Decide if this is the last line or not
+  label('videoD')                 # Default video mode
+  ld([frameX], X)                 #29 4th scanline of 4
+  ld([videoY])                    #30
+  suba((120-1)*2)                 #31
+  beq('.lastpixels#34')           #32
+  adda(120*2)                     #33 More pixel lines to go
+  st([videoY])                    #34
+  nop()                           #35
+  ld([frameY],Y)                  #36
+  ld(syncBits)                    #37
+  bra([videoModeD])               #38
+  bra(pc()+2)                     #39
+  nop()                           #40 'pixels' or 'nopixels'
+  nop()                           #41
+  ld('videoA')                    #42
+  label('videoD#43')
+  st([nextVideo])                 #43
+  runVcpu(200-44,                 #44
+          '---D line 40-520',
+          returnTo=0x1ff )
+
+  label('.lastpixels#34')
+  if soundDiscontinuity == 1:
+    st(sample, [sample])          #34 Sound continuity
+  else:
+    nop()                         #34
+  ld([frameY],Y)                  #35
+  ld(syncBits)                    #36
+  nop()                           #37
+  bra([videoModeD])               #38
+  bra(pc()+2)                     #39
+  nop()                           #40 'pixels' or 'nopixels'
+  bra('videoD#43')                #41
+  ld('videoE')                    #42 no more scanlines
+
+  # Back porch "E": after the last line
+  # - Go back and and enter vertical blank (program page 2)
+  label('videoE') # Exit visible area
+  ld(hi('vBlankStart'),Y)         #29 Return to vertical blank interval
+  jmp(Y,'vBlankStart')            #30
+  ld(syncBits)                    #31
+
+  # Video mode that blacks out one or more pixel lines from the top of screen.
+  # This yields some speed, but also frees up screen memory for other purposes.
+  # Note: Sound output becomes choppier the more pixel lines are skipped
+  # Note: The vertical blank driver leaves 0x80 behind in [videoSync1]
+  label('videoF')
+  ld([videoSync1])                #29 Completely black pixel line
+  adda(0x80)                      #30
+  st([videoSync1],X)              #31
+  ld([frameX])                    #32
+  suba([X])                       #33 Decrements every two VGA scanlines
+  beq('.videoF#36')               #34
+  st([frameX])                    #35
+  bra('.videoF#38')               #36
+  label('.videoF#36')
+  ld('videoA')                    #36,37 Transfer to visible screen area
+  st([nextVideo])                 #37
+  label('.videoF#38')
+  runVcpu(200-38,                 #38
+          'ABCD line 40-520 (videoF)',
+          returnTo=0x1ff )
+
+  fillers(until=0xfc);
+  label('pixels')
+  ora([Y,Xpp],OUT)                #40
+  label('nopixels')
+  nop()                           #40
 
 #-----------------------------------------------------------------------
 #
@@ -3315,7 +3543,10 @@ ld('pixels')                    #37
 ld('pixels')                    #37
 ld('nopixels')                  #37
 label('.sysSm#38')
-st([videoModeC])                #38
+if WITH_512K_BOARD:
+  nop()                           #38
+else:
+  st([videoModeC])                #38
 ld([vAC])                       #39
 anda(3)                         #40
 adda('.sysSm#44')               #41
@@ -3838,25 +4069,43 @@ beq('sysEx#22')                     #20
 ld([vAC])                           #21 load low byte of ctrl code in delay slot
 anda(0xfc)                          #22 sanitize normal ctrl code
 st([Y,ctrlBits])                    #23 store in ctrlBits
-st([vTmp])                          #24 store in vTmp
-bra('sysEx#27')                     #25 jump to issuing normal ctrl code
-ld([vAC+1],Y)                       #26 load high byte of ctrl code in delay slot
-label('sysEx#22')
-anda(0xfc,X)                        #22 * special ctrl code
-ld([Y,ctrlBits])                    #23 get previous normal code from ctrlBits
-st([vTmp])                          #24 save it in vTmp
-ld([vAC+1],Y)                       #25 load high byte of ctrl code
-ctrl(Y,X)                           #26 issue special ctrl code
-label('sysEx#27')
-ld([vTmp])                          #27 load saved normal ctrl code
-anda(0xfc,X)                        #28 sanitize ctrlBits
-ctrl(Y,X)                           #29 issue normal ctrl code
-ld([vTmp])                          #30 always load something after ctrl
-ld(hi('REENTER'),Y)                 #31
-jmp(Y,'REENTER')                    #32
-ld(-36/2)                           #33
+if not WITH_512K_BOARD:
+  st([vTmp])                          #24 store in vTmp
+  bra('sysEx#27')                     #25 jump to issuing normal ctrl code
+  ld([vAC+1],Y)                       #26 load high byte of ctrl code in delay slot
+  label('sysEx#22')
+  anda(0xfc,X)                        #22 * special ctrl code
+  ld([Y,ctrlBits])                    #23 get previous normal code from ctrlBits
+  st([vTmp])                          #24 save it in vTmp
+  ld([vAC+1],Y)                       #25 load high byte of ctrl code
+  ctrl(Y,X)                           #26 issue special ctrl code
+  label('sysEx#27')
+  ld([vTmp])                          #27 load saved normal ctrl code
+  anda(0xfc,X)                        #28 sanitize ctrlBits
+  ctrl(Y,X)                           #29 issue normal ctrl code
+  ld([vTmp])                          #30 always load something after ctrl
+  ld(hi('REENTER'),Y)                 #31
+  jmp(Y,'REENTER')                    #32
+  ld(-36/2)                           #33
+else:
+  ld(AC,X)                            #24
+  ld([vAC+1],Y)                       #25
+  ctrl(Y,X)                           #26 issue ctrl code
+  label('sysEx#27') 
+  ld(hi('REENTER'),Y)                 #27
+  jmp(Y,'REENTER')                    #28
+  ld(-32/2)                           #29
+  label('sysEx#22')
+  ld(AC,X)                            #22 special ctrl code
+  ld([vAC+1],Y)                       #23
+  xora(0xf0)                          #24
+  bne('sysEx#27')                     #25
+  ctrl(Y,X)                           #26 issue ctrl code
+  ld(hi('sysEx#30'),Y)                #27
+  jmp(Y,'sysEx#30')                   #28 jump to a place with more space
+  ld([vAC+1])                         #29
 
-
+  
 #-----------------------------------------------------------------------
 
 label('sys_SpiExchangeBytes')
@@ -5815,8 +6064,20 @@ ld(-26/2)                       #23
 jmp(Y,'NEXT')                   #24 using NEXT
 ld([vPC+1],Y)                   #25
 
+
 #-----------------------------------------------------------------------
-# Reserved space
+# Continuation of SYS_ExpanderControl
+# dealing with extended banking codes
+
+if WITH_512K_BOARD:
+  label('sysEx#30')
+  xora([videoModeC])                  #30
+  anda(0xfe)                          #31 Save 7 bits of extended banking
+  xora([videoModeC])                  #32 code into videomodeC.
+  st([videoModeC])                    #33 
+  ld(hi('NEXTY'),Y)                   #34
+  jmp(Y,'NEXTY')                      #35
+  ld(-38/2)                           #36
 
 
 
