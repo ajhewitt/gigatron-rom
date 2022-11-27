@@ -1,4 +1,17 @@
 {
-    "SYS_Multiply_s16_DEVROM_34"      : "0x9e",
-    "SYS_Divide_s16_DEVROM_34"        : "0xa1"
+    "SYS_Multiply_s16_v7_34"      : "0x9e",
+    "SYS_Divide_s16_v7_34"        : "0xa1",
+
+    "JEQ_v7"           : "0x033f",
+    "JGT_v7"           : "0x034d",
+    "JLT_v7"           : "0x0350",
+    "JGE_v7"           : "0x0353",
+    "JLE_v7"           : "0x0356",
+    "JNE_v7"           : "0x0372",
+    "BEQ"              : "0x353f",
+    "BGT"              : "0x354d",
+    "BLT"              : "0x3550",
+    "BGE"              : "0x3553",
+    "BLE"              : "0x3556",
+    "BNE"              : "0x3572"
 }

@@ -361,6 +361,8 @@ vIrqSave        = zpByte(6)
 userVars_v5     = zpByte(0)
 # Start of safely usable bytes under ROMv6
 userVars_v6     = zpByte(0)
+# Start of safely usable bytes under ROMv7
+userVars_v7     = zpByte(0)
 
 # [0x80]
 # Constant 0x01.
@@ -780,7 +782,7 @@ ld(-20/2)                       #17
 
 #-----------------------------------------------------------------------
 # Extension SYS_Multiply_s16_v6_66: 16 bit multiplication
-# Also known as SYS_Multiply_s16_DEVROM_34.
+# Also known as SYS_Multiply_s16_v7_34.
 #-----------------------------------------------------------------------
 #
 # Computes C = C + A * B where A,B,C are 16 bits integers.
@@ -794,14 +796,14 @@ ld(-20/2)                       #17
 # Original design: at67
 
 label('SYS_Multiply_s16_v6_66')
-label('SYS_Multiply_s16_DEVROM_34')
+label('SYS_Multiply_s16_v7_34')
 ld(hi('sys_Multiply_s16'),Y)    #15 slot 0x9e
 jmp(Y,'sys_Multiply_s16')       #16
 ld([sysArgs+6])                 #17 load mask.lo
 
 #-----------------------------------------------------------------------
 # Extension SYS_Divide_s16_v6_80: 15 bit division
-# Also known as SYS_Divide_s16_DEVROM_34
+# Also known as SYS_Divide_s16_v7_34
 #-----------------------------------------------------------------------
 #
 # Computes the Euclidean division of 0<=A<65536 and 0<B<65536.
@@ -818,7 +820,7 @@ ld([sysArgs+6])                 #17 load mask.lo
 # Improved for unrestricted unsigned division
 
 label('SYS_Divide_s16_v6_80')
-label('SYS_Divide_u16_DEVROM_34')
+label('SYS_Divide_u16_v7_34')
 ld(hi('sys_Divide_u16'),Y)      #15 slot 0xa1
 jmp(Y,'sys_Divide_u16')         #16
 ld([sysArgs+4])                 #17
@@ -1929,70 +1931,86 @@ st([X])                         #17
 bra('NEXT')                     #18
 ld(-20/2)                       #19
 
-# Instruction BCC: Test AC sign and branch conditionally, 28 cycles
+# Instruction PREFIX35: (used to be BCC)
 label('BCC')
-ld([vAC+1])                     #10 First inspect high byte of vAC
-bne('.bcc#13')                  #11
-st([vTmp])                      #12
-ld([vAC])                       #13 Additionally inspect low byte of vAC
-beq('.bcc#16')                  #14
-ld(1)                           #15
-st([vTmp])                      #16
-ld([Y,X])                       #17 Operand is the conditional
-label('.bcc#18')
-bra(AC)                         #18
-ld([vTmp])                      #19
+label('PREFIX35')
+st([Y,Xpp])                     #10
+ld(hi('PREFIX35_PAGE'),Y)       #11
+jmp(Y,AC)                       #12
+ld([vPC+1],Y)                   #13
 
-# Conditional EQ: Branch if zero (if(vACL==0)vPCL=D)
+# Instruction slot (39 ..)
+ld(hi('NEXTY'),Y)               #10
+jmp(Y,'NEXTY')                  #11
+ld(-14//2)                      #12
+
+# Instruction slot (3c ..)
+ld(hi('NEXTY'),Y)               #10
+jmp(Y,'NEXTY')                  #11
+ld(-14//2)                      #12
+
+# Instruction JEQ (3f ll hh), 26 cycles (was EQ)
+# * Original idea from at67
+# * Branch if zero (if(vACL==0)vPC=hhll[+2])
 label('EQ')
-bne('.bcc#22')                  #20
-label('.bcc#13')
-beq('.bcc#23')                  #21,13 AC=0 in EQ, AC!=0 from BCC... Overlap with BCC
-ld([Y,X])                       #22,14 Overlap with BCC
-#
-# (continue BCC)
-#label('.bcc#13')
-#dummy()                        #13
-#dummy()                        #14
-nop()                           #15
-label('.bcc#16')
-bra('.bcc#18')                  #16
-ld([Y,X])                       #17 Operand is the conditional
-label('.bcc#22')
-ld([vPC])                       #22 False condition
-bra('.bcc#25')                  #23
-adda(1)                         #24
-label('.bcc#23')
-st([Y,Xpp])                     #23 Just X++ True condition
-ld([Y,X])                       #24
-label('.bcc#25')
-st([vPC])                       #25
-bra('NEXT')                     #26
-ld(-28/2)                       #27
+label('JEQ_v7')
+ld(hi('jeq#13'),Y)              #10
+jmp(Y,'jeq#13')                 #11
 
-# Conditional GT: Branch if positive (if(vACL>0)vPCL=D)
+# Instruction slot (41 ..)
+ld(hi('NEXTY'),Y)               #10,12
+jmp(Y,'NEXTY')                  #11
+ld(-14//2)                      #12
+
+# Instruction slot (44 ..)
+ld(hi('NEXTY'),Y)               #10
+jmp(Y,'NEXTY')                  #11
+ld(-14//2)                      #12
+
+# Instruction slot (47 ..)
+ld(hi('NEXTY'),Y)               #10
+jmp(Y,'NEXTY')                  #11
+ld(-14//2)                      #12
+
+# Instruction slot (4a ..)
+ld(hi('NEXTY'),Y)               #10
+jmp(Y,'NEXTY')                  #11
+ld(-14//2)                      #12
+
+# Instruction JGT (4d ll hh), 26 cycles (was GT)
+# * Original idea from at67
+# * Branch if positive (if(vACL>0)vPC=hhll[+2])
 label('GT')
-ble('.bcc#22')                  #20
-bgt('.bcc#23')                  #21
-ld([Y,X])                       #22
+label('JGT_v7')
+ld(hi('jgt#13'),Y)              #10
+jmp(Y,'jgt#13')                 #11
+ld([vAC+1])                     #12
 
-# Conditional LT: Branch if negative (if(vACL<0)vPCL=D)
+# Instruction JLT (50 ll hh), 26 cycles (was LT)
+# * Original idea from at67
+# * Branch if negative (if(vACL<0)vPC=hhll[+2])
 label('LT')
-bge('.bcc#22')                  #20
-blt('.bcc#23')                  #21
-ld([Y,X])                       #22
+label('JLT_v7')
+ld(hi('jlt#13'),Y)              #10
+jmp(Y,'jlt#13')                 #11
+ld([vAC+1])                     #12
 
-# Conditional GE: Branch if positive or zero (if(vACL>=0)vPCL=D)
+# Instruction JGE (53 ll hh), 26 cycles (was GE)
+# * Original idea from at67
+# * Branch if positive or zero (if(vACL>=0)vPC=hhll[+2])
 label('GE')
-blt('.bcc#22')                  #20
-bge('.bcc#23')                  #21
-ld([Y,X])                       #22
+label('JGE_v7')
+ld(hi('jge#13'),Y)              #10
+jmp(Y,'jge#13')                 #11
+ld([vAC+1])                     #12
 
-# Conditional LE: Branch if negative or zero (if(vACL<=0)vPCL=D)
-label('LE')
-bgt('.bcc#22')                  #20
-ble('.bcc#23')                  #21
-ld([Y,X])                       #22
+# Instruction JLE (56 ll hh), 26 cycles (was LE)
+# * Original idea from at67
+# * Branch if negative or zero (if(vACL<=0)vPC=hhll[+2])
+label('JLE_v7')
+ld(hi('jle#13'),Y)              #10
+jmp(Y,'jle#13')                 #11
+ld([vAC+1])                     #12
 
 # Instruction LDI: Load immediate small positive constant (vAC=D), 16 cycles
 label('LDI')
@@ -2012,41 +2030,57 @@ ld(-16/2)                       #14
 
 # Instruction POP: Pop address from stack (vLR,vSP==[vSP]+256*[vSP+1],vSP+2), 26 cycles
 label('POP')
-ld([vSP],X)                     #10,15
-ld([X])                         #11
-st([vLR])                       #12
-ld([vSP])                       #13
-adda(1,X)                       #14
-ld([X])                         #15
-st([vLR+1])                     #16
-ld([vSP])                       #17
-adda(2)                         #18
-st([vSP])                       #19
-label('.pop#20')
-ld([vPC])                       #20
-suba(1)                         #21
-st([vPC])                       #22
-bra('NEXTY')                    #23
-ld(-26/2)                       #24
+ld(hi('pop#13'),Y)              #10
+jmp(Y,'pop#13')                 #11
+ld([vSP],X)                     #12
 
-# Conditional NE: Branch if not zero (if(vACL!=0)vPCL=D)
+# Instruction slot (66 ..)
+ld(hi('NEXTY'),Y)               #10
+jmp(Y,'NEXTY')                  #11
+ld(-14//2)                      #12
+
+# Instruction slot (69 ..)
+ld(hi('NEXTY'),Y)               #10
+jmp(Y,'NEXTY')                  #11
+ld(-14//2)                      #12
+
+# Instruction slot (6c ..)
+ld(hi('NEXTY'),Y)               #10
+jmp(Y,'NEXTY')                  #11
+ld(-14//2)                      #12
+
+# Instruction slot (6f ..)
+ld(hi('NEXTY'),Y)               #10
+jmp(Y,'NEXTY')                  #11
+ld(-14//2)                      #12
+
+# Instruction JNE (72 ii jj), 26 cycles (was NE)
+# * Original idea from at67
+# * Branch if not zero (if(vACL!=0)vPC=iijj)
 label('NE')
-beq('.bcc#22')                  #20,25
-bne('.bcc#23')                  #21
-ld([Y,X])                       #22
+label('JNE_v7')
+ld(hi('jne#13'),Y)              #10
+jmp(Y,'jne#13')                 #11
+nop()                           #12
 
 # Instruction PUSH: Push vLR on stack ([vSP-2],v[vSP-1],vSP=vLR&255,vLR>>8,vLR-2), 26 cycles
 label('PUSH')
-ld([vSP])                       #10
-suba(1,X)                       #11
-ld([vLR+1])                     #12
-st([X])                         #13
-ld([vSP])                       #14
-suba(2)                         #15
-st([vSP],X)                     #16
-ld([vLR])                       #17
-bra('.pop#20')                  #18
-st([X])                         #19
+ld(hi('push#13'),Y)             #10
+jmp(Y,'push#13')                #11
+ld(0,Y)                         #12
+
+# Instruction slot (78 ..)
+bra('REENTER')                  #10
+ld(-14//2)                      #11
+
+# Instruction slot (7a ..)
+bra('REENTER')                  #10
+ld(-14//2)                      #11
+
+# Instruction slot (7c ..)
+ld(hi('NEXTY'),Y)               #10
+jmp(Y,'NEXTY')                  #11
+ld(-14//2)                      #12
 
 # Instruction LUP: ROM lookup (vAC=ROM[vAC+D]), 26 cycles
 label('LUP')
@@ -2131,8 +2165,17 @@ ld(-28/2)                       #27
 label('PEEK')
 ld(hi('peek'),Y)                #10
 jmp(Y,'peek')                   #11
-#ld([vPC])                      #12 Overlap
-#
+
+# SYS restart
+label('.sys#13')
+ld(hi('.sys#16'),Y)              #13,12
+jmp(Y,'.sys#16')                 #14
+
+# Instruction slot (b1 ..)
+ld(hi('NEXTY'),Y)                #10,15
+jmp(Y,'NEXTY')                   #11
+ld(-14//2)                       #12
+
 # Instruction SYS: Native call, <=256 cycles (<=128 ticks, in reality less)
 #
 # The 'SYS' vCPU instruction first checks the number of desired ticks given by
@@ -2149,12 +2192,6 @@ jmp(Y,'peek')                   #11
 # of cycles to excess number of ticks.
 # SYS functions can modify vPC to implement repetition. For example to split
 # up work into multiple chucks.
-label('.sys#13')
-ld([vPC])                       #13,12 Retry until sufficient time
-suba(2)                         #14
-st([vPC])                       #15
-bra('REENTER')                  #16
-ld(-20/2)                       #17
 label('SYS')
 adda([vTicks])                  #10
 blt('.sys#13')                  #11
@@ -2218,10 +2255,12 @@ ld(-26/2)                       #25
 
 # Instruction ALLOC: Create or destroy stack frame (vSP+=D), 14 cycles
 label('ALLOC')
-adda([vSP])                     #10
-st([vSP])                       #11
-bra('NEXT')                     #12
-ld(-14/2)                       #13
+ld(hi('alloc#13'),Y)            #10
+jmp(Y,'alloc#13')               #11
+
+# Instruction slot (short)
+ld(hi('alloc#13'),Y)            #10
+jmp(Y,'alloc#13')               #11
 
 # The instructions below are all implemented in the second code page. Jumping
 # back and forth makes each 6 cycles slower, but it also saves space in the
@@ -2232,7 +2271,7 @@ ld(-14/2)                       #13
 
 # Instruction ADDI: Add small positive constant (vAC+=D), 28 cycles
 label('ADDI')
-ld(hi('addi'),Y)                #10
+ld(hi('addi'),Y)                #10,12
 jmp(Y,'addi')                   #11
 st([vTmp])                      #12
 
@@ -2400,34 +2439,6 @@ ld(hi('REENTER_28'),Y)          #22
 jmp(Y,'REENTER_28')             #23
 st([vPC])                       #24
 
-# STLW implementation
-label('stlw')
-adda([vSP])                     #13
-st([vTmp])                      #14
-adda(1,X)                       #15
-ld([vAC+1])                     #16
-st([X])                         #17
-ld([vTmp],X)                    #18
-ld([vAC])                       #19
-st([X])                         #20
-ld(hi('REENTER'),Y)             #21
-jmp(Y,'REENTER')                #22
-ld(-26/2)                       #23
-
-# LDLW implementation
-label('ldlw')
-adda([vSP])                     #13
-st([vTmp])                      #14
-adda(1,X)                       #15
-ld([X])                         #16
-st([vAC+1])                     #17
-ld([vTmp],X)                    #18
-ld([X])                         #19
-st([vAC])                       #20
-ld(hi('REENTER'),Y)             #21
-jmp(Y,'REENTER')                #22
-ld(-26/2)                       #23
-
 # POKE implementation
 label('poke')
 adda(1,X)                       #13
@@ -2444,17 +2455,18 @@ ld(-26/2)                       #23
 
 # PEEK implementation
 label('peek')
-suba(1)                         #13
-st([vPC])                       #14
-ld([vAC],X)                     #15
-ld([vAC+1],Y)                   #16
-ld([Y,X])                       #17
-st([vAC])                       #18
-ld(0)                           #19
-st([vAC+1])                     #20
-ld(hi('REENTER'),Y)             #21
-jmp(Y,'REENTER')                #22
-ld(-26/2)                       #23
+ld([vPC])                       #13
+suba(1)                         #14
+st([vPC])                       #15
+ld([vAC],X)                     #16
+ld([vAC+1],Y)                   #17
+ld([Y,X])                       #18
+st([vAC])                       #19
+ld(0)                           #20
+st([vAC+1])                     #21
+ld(hi('NEXTY'),Y)               #22
+jmp(Y,'NEXTY')                  #23
+ld(-26/2)                       #24
 
 # DOKE implementation
 label('doke')
@@ -2530,6 +2542,19 @@ st([vAC])                       #20
 ld(hi('REENTER'),Y)             #21
 jmp(Y,'REENTER')                #22
 ld(-26/2)                       #23
+#
+# SYS implementation
+label('.sys#16')
+nop()                           #16
+label('.sys#17')
+ld([vPC])                       #17
+suba(2)                         #18
+st([vPC])                       #19
+ld(hi('NEXTY'),Y)               #20
+jmp(Y,'NEXTY')                  #21
+ld(-24//2)                      #22
+
+
 
 #-----------------------------------------------------------------------
 #
@@ -2548,6 +2573,8 @@ ld(-26/2)                       #23
 #  ROMs than required. See also Docs/GT1-files.txt on using [romType].
 #
 #-----------------------------------------------------------------------
+
+fillers(until=0xa7)
 
 #-----------------------------------------------------------------------
 # Extension SYS_Random_34: Update entropy and copy to vAC
@@ -6733,6 +6760,292 @@ ld(-28/2)                       #27
 
 
 
+
+#-----------------------------------------------------------------------
+#
+#   $1700 ROM page 23: vCPU Prefix35 page
+#
+#-----------------------------------------------------------------------
+
+align(0x100, size=0x100)
+
+label('PREFIX35_PAGE')
+
+def oplabel(name):
+  define(name, 0x3500 | (pc() & 0xff))
+
+# Instruction slots
+
+fillers(until=0x3f)
+
+# Instruction BEQ (35 3f xx) [26 cycles]
+# - Branch if zero (if(vACL==0)vPCL=xx)
+assert (pc() & 255) == (symbol('EQ') & 255)
+oplabel('BEQ')
+nop()                           #14
+nop()                           #15
+ld([vAC+1])                     #16
+label('beq#17')
+ora([vAC])                      #17
+beq('bccy#20')                  #18
+ld(1)                           #19
+label('bccn#20')
+adda([vPC])                     #20
+st([vPC])                       #21
+ld(hi('NEXTY'),Y)               #22
+jmp(Y,'NEXTY')                  #23
+ld(-26//2)                      #24
+nop()
+label('bccn#18')
+bra('bccn#20')                  #18
+ld(1)                           #19
+
+# Instruction BGT (35 4d xx) [26 cycles]
+# - Branch if positive (if(vACL>0)vPCL=xx)
+assert (pc() & 255) == (symbol('GT') & 255)
+oplabel('BGT')
+ld([vAC+1])                     #14
+bpl('bne#17')                   #15
+bmi('bccn#18')                  #16
+
+# Instruction BLT (35 50 xx) [26 cycles]
+# - Branch if negative (if(vACL<0)vPCL=xx)
+assert (pc() & 255) == (symbol('LT') & 255)
+oplabel('BLT')
+ld([vAC+1])                     #14,17
+bmi('bccy#17')                  #15
+bpl('bccn#18')                  #16
+
+# Instruction BGE (35 53 xx) [26 cycles]
+# * Branch if positive or zero (if(vACL>=0)vPCL=xx)
+assert (pc() & 255) == (symbol('GE') & 255)
+oplabel('BGE')
+ld([vAC+1])                     #14,17
+bpl('bccy#17')                  #15
+bmi('bccn#18')                  #16
+
+# Instruction BLE (35 56 xx) [26 cycles]
+# * Branch if negative or zero (if(vACL<=0)vPCL=xx)
+assert (pc() & 255) == (symbol('LE') & 255)
+oplabel('BLE')
+ld([vAC+1])                     #14,17
+bpl('beq#17')                   #15
+nop()                           #16
+label('bccy#17')
+nop()                           #17
+label('bccy#18')
+bra('bccy#20')                  #18
+ld([Y,X])                       #19
+
+# Instruction slots
+
+fillers(until=0x72)
+
+# Instruction BNE (35 72 xx) [26 cycles]
+# * Branch if not zero (if(vACL!=0)vPCL=xx)
+assert (pc() & 255) == (symbol('NE') & 255)
+oplabel('BNE')
+nop()                           #14
+nop()                           #15
+ld([vAC+1])                     #16
+label('bne#17')
+ora([vAC])                      #17
+beq('bccn#20')                  #18
+ld(1)                           #19
+label('bccy#20')
+ld([Y,X])                       #20
+st([vPC])                       #21
+ld(hi('NEXTY'),Y)               #22
+jmp(Y,'NEXTY')                  #23
+ld(-26//2)                      #24
+
+# Instruction slots
+
+fillers(until=0xff)
+
+
+#-----------------------------------------------------------------------
+#
+#   $1800 ROM page 24: vCPU op implementation (from page 3)
+#
+#-----------------------------------------------------------------------
+
+fillers(until=0xff)
+bra(pc()+4)                     #0 ENTER
+align(0x100, size=0x100)
+bra([fsmState])                 #1
+assert (pc() & 255) == (symbol('NEXT') & 255)
+adda([vTicks])                  #0 NEXT
+bge([fsmState])                 #1
+st([vTicks])                    #2
+adda(maxTicks)                  #3
+bgt(pc()&255)                   #4
+suba(1)                         #5
+ld(hi('vBlankStart'),Y)         #6
+jmp(Y,[vReturn])                #7
+ld(0)                           #8
+
+#-----------------------------------------------------------------------
+# Implementation of long and fast conditional branches
+# Original idea from at67
+
+# JNE implementation (24/26)
+label('jne#13')
+ld([vAC+1])                     #13
+ora([vAC])                      #14
+beq('jccn#17')                  #15
+label('jccy#16')                # branch in 26 cycles
+ld([vPC+1],Y)                   #16
+label('jccy#17')                # branch in 26 cycles (with Y=PCH)
+ld([Y,X])                       #17
+st([Y,Xpp])                     #18
+st([vPC])                       #19
+ld([Y,X])                       #20
+st([vPC+1])                     #21
+ld(hi('NEXTY'),Y)               #22
+jmp(Y,'NEXTY')                  #23
+ld(-26/2)                       #24
+
+# JEQ implementation (24/26)
+label('jeq#13')
+ld([vAC+1])                     #13
+ora([vAC])                      #14
+beq('jccy#17')                  #15
+ld([vPC+1],Y)                   #16
+label('jccn#17')                # pass in 24 cycles
+ld(1)                           #17
+label('jccn#18')                # pass in 24 cycles (with AC=1)
+adda([vPC])                     #18
+st([vPC])                       #19
+ld(hi('NEXTY'),Y)               #20
+jmp(Y,'NEXTY')                  #21
+ld(-24/2)                       #22
+
+# Jcc returns
+label('jccy#15')                # branch 26 cycles
+bra('jccy#17')                  #15
+ld([vPC+1],Y)                   #16
+label('jccn#15')                # pass 22 cycles
+ld(1)                           #15
+label('jccn#16')                # pass 22 cycles (with AC=1)
+adda([vPC])                     #16
+st([vPC])                       #17
+ld(hi('NEXTY'),Y)               #18
+jmp(Y,'NEXTY')                  #19
+ld(-22/2)                       #20
+label('jccn#20')                # pass 26 cycles (with AC=1)
+adda([vPC])                     #20
+st([vPC])                       #21
+ld(hi('NEXTY'),Y)               #22
+jmp(Y,'NEXTY')                  #23
+ld(-26/2)                       #24
+
+# JLT implementation (22/26) [with vACH in AC]
+label('jlt#13')
+bmi('jccy#15')                  #14
+bpl('jccn#16')                  #14
+ld(1)                           #15
+
+# JGE implementation (22/26) [with vACH in AC]
+label('jge#13')
+bpl('jccy#15')                  #13
+bmi('jccn#16')                  #14
+ld(1)                           #15
+
+# JGT implementation (24-26/26) [with vACH in AC]
+label('jgt#13')
+bmi('jccn#15')                  #13
+ora([vAC])                      #14
+bne('jccy#17')                  #15
+ld([vPC+1],Y)                   #16
+ld(1)                           #17
+bra('jccn#20')                  #18
+nop()                           #19
+
+# JLE implementation (24-26/26) [with vACH in AC]
+label('jle#13')
+bmi('jccy#15')                  #13
+ora([vAC])                      #14
+beq('jccy#17')                  #15
+ld([vPC+1],Y)                   #16
+ld(1)                           #17
+bra('jccn#20')                  #18
+nop()                           #19
+
+#-----------------------------------------------------------------------
+
+# ALLOC implementation
+label('alloc#13')
+adda([vSP])                     #13
+st([vSP])                       #14
+ld(hi('REENTER'),Y)             #15
+jmp(Y,'REENTER')                #16
+ld(-20/2)                       #17
+
+# STLW implementation
+label('stlw')
+adda([vSP])                     #13
+st([vTmp])                      #14
+adda(1,X)                       #15
+ld([vAC+1])                     #16
+st([X])                         #17
+ld([vTmp],X)                    #18
+ld([vAC])                       #19
+st([X])                         #20
+ld(hi('REENTER'),Y)             #21
+jmp(Y,'REENTER')                #22
+ld(-26/2)                       #23
+
+# LDLW implementation
+label('ldlw')
+adda([vSP])                     #13
+st([vTmp])                      #14
+adda(1,X)                       #15
+ld([X])                         #16
+st([vAC+1])                     #17
+ld([vTmp],X)                    #18
+ld([X])                         #19
+st([vAC])                       #20
+ld(hi('REENTER'),Y)             #21
+jmp(Y,'REENTER')                #22
+ld(-26/2)                       #23
+
+# PUSH implementation
+label('push#13')
+ld([vSP])                       #13
+suba(2)                         #14
+st([vSP],X)                     #15
+ld([vLR])                       #16
+st([Y,Xpp])                     #17
+ld([vLR+1])                     #18
+st([Y,Xpp])                     #19
+ld([vPC])                       #20
+suba(1)                         #21
+st([vPC])                       #22
+ld(hi('REENTER'),Y)             #23
+jmp(Y,'REENTER')                #24
+ld(-28//2)                      #25
+
+# POP implementation 
+label('pop#13')
+ld([X])                         #13
+st([vLR])                       #14
+ld([vSP])                       #15
+adda(1,X)                       #16
+adda(2)                         #17
+st([vSP])                       #18
+ld([X])                         #19
+st([vLR+1])                     #20
+ld([vPC])                       #21
+suba(1)                         #22
+st([vPC])                       #23
+ld(hi('NEXTY'),Y)               #24
+jmp(Y,'NEXTY')                  #25
+ld(-28//2)                      #26
+
+
+
+
 #-----------------------------------------------------------------------
 #
 #  End of Core
@@ -6777,7 +7090,8 @@ define('ledTempo',   ledTempo)
 define('userVars',   userVars)
 define('userVars_v4',userVars_v4)
 define('userVars_v5',userVars_v5)
-define('userVars_v5',userVars_v6)
+define('userVars_v6',userVars_v6)
+define('userVars_v7',userVars_v7)
 define('videoTable', videoTable)
 define('vIRQ_v5',    vIRQ_v5)
 define('ctrlBits_v5',ctrlBits)
