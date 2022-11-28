@@ -5837,81 +5837,6 @@ ld(-46/2)                            #44
 
 
 #-----------------------------------------------------------------------
-# sys_Multiply_s16, sum:s16 = x:s16 * y:s16
-# x:args0:1 y:args2:3 sum:args4:5 mask:args6:7
-#
-# Written by at67 for early ROMvX0.
-
-label('sys_Multiply_s16')
-anda([sysArgs+2])               #18,
-st([vAC])                       #19, AC.lo = mask.lo AND y.lo
-ld([sysArgs+7])                 #20, load mask.hio
-anda([sysArgs+3])               #21,
-st([vAC+1])                     #22, AC.hi = mask.hi AND y.hi
-ora([vAC])                      #23,
-beq('.sys_ms16_26')             #24, AC = 0 then skip
-ld([sysArgs+4])                 #25, load sum.lo
-adda([sysArgs+0])               #26, load x.lo
-st([sysArgs+4])                 #27, sum.lo = sum.lo + x.lo
-blt('.sys_ms16_30')             #28, check for carry
-suba([sysArgs+0])               #29, get original sum.lo back
-bra('.sys_ms16_32')             #30,
-ora([sysArgs+0])                #31, carry in bit 7
-
-label('.sys_ms16_26')
-bra('.sys_ms16_28')             #26,
-ld(-56/2)                       #27, no accumulate sys ticks
-
-label('.sys_ms16_30')
-anda([sysArgs+0])               #30, carry in bit 7
-nop()                           #31,
-
-label('.sys_ms16_32')
-anda(0x80,X)                    #32,
-ld([X])                         #33, move carry to bit 0
-adda([sysArgs+5])               #34,
-adda([sysArgs+1])               #35,
-st([sysArgs+5])                 #36, sum.hi = sum.hi + x.hi
-ld(-66/2)                       #37, accumulate sys ticks
-
-label('.sys_ms16_28')
-st([vTmp])                      #28,#38,
-ld([sysArgs+0])                 #29,#39, AC = x.lo
-anda(0x80,X)                    #30,#40, X = AC & 0x80
-adda([sysArgs+0])               #31,#41, AC = x.lo <<1
-st([sysArgs+0])                 #32,#42, x.lo = AC
-ld([X])                         #33,#43, AC = X >>7
-adda([sysArgs+1])               #34,#44,
-adda([sysArgs+1])               #35,#45,
-st([sysArgs+1])                 #36,#46, x.hi = x.hi <<1 + AC
-ld([sysArgs+6])                 #37,#47, AC = mask.lo
-anda(0x80,X)                    #38,#48, X = AC & 0x80
-adda([sysArgs+6])               #39,#49, AC = mask.lo <<1
-st([sysArgs+6])                 #40,#50, mask.lo = AC
-ld([X])                         #41,#51, AC = X >>7
-adda([sysArgs+7])               #42,#52,
-adda([sysArgs+7])               #43,#53,
-st([sysArgs+7])                 #44,#54, mask.hi = mask.hi <<1 + AC
-ora([sysArgs+6])                #45,#55,
-beq('.sys_ms16_48')             #46,#56, if mask = 0
-ld([sysArgs+4])                 #47,#57
-ld([vPC])                       #48,#58,
-suba(2)                         #49,#59,
-st([vPC])                       #50,#60, restart SYS function
-ld(hi('REENTER'),Y)             #51,#61,
-jmp(Y,'REENTER')                #52,#62,
-ld([vTmp])                      #53,#63,
-
-label('.sys_ms16_48')
-st([vAC])                       #48,#58,
-ld([sysArgs+5])                 #49,#59,
-st([vAC+1])                     #50,#60,
-ld(hi('REENTER'),Y)             #51,#61,
-jmp(Y,'REENTER')                #52,#62,
-ld([vTmp])                      #53,#63,
-
-
-#-----------------------------------------------------------------------
 # sys_Divide_s16, x:s16 = x:s16 / y:s16, rem:s16 = x:s16 % y:s16
 # x:args0:1 y:args2:3 rem:args4:5 mask:args6:7
 #
@@ -5999,6 +5924,113 @@ st([vPC])                       #66, #74, restart SYS function
 ld(hi('REENTER'),Y)             #67, #75,
 jmp(Y,'REENTER')                #68, #76,
 ld([vTmp])                      #69, #77,
+
+
+#-----------------------------------------------------------------------
+#
+#  $1500 FSM tests
+#
+#-----------------------------------------------------------------------
+
+fsmState=sysFn+1 
+
+fillers(until=0xff)
+bra(pc()+4)                     #0 ($14ff)
+align(0x100, size=0x100)
+bra([fsmState])                 #1 ($1500)
+assert (pc() & 255) == (symbol('NEXT') & 255)
+adda([vTicks])                  #0
+bge([fsmState])                 #1
+st([vTicks])                    #2
+adda(maxTicks)                  #3
+bgt(pc()&255)                   #4
+suba(1)                         #5
+ld(hi('vBlankStart'),Y)         #6
+jmp(Y,[vReturn])                #7
+ld(0)                           #8
+
+#-----------------------------------------------------------------------
+# sys_Multiply_s16, sum:s16 = x:s16 * y:s16
+# x:args0:1 y:args2:3 sum:args4:5 mask:args6:7
+#
+# Original version by at67
+
+label('sys_Multiply_s16')
+ld('.sysm16#3a')                #18
+st([fsmState])                  #19
+ld((pc()>>8)-1)                 #20
+st([vCpuSelect])                #21
+bra('NEXT')                     #22 
+ld(-24/2)                       #23
+
+label('.sysm16#3a')
+ld('.sysm16#3b')                #3
+st([fsmState])                  #4
+ld([sysArgs+6])                 #5 load mask.lo
+anda([sysArgs+2])               #6
+st([vAC])                       #7 AC.lo = mask.lo AND y.lo
+ld([sysArgs+7])                 #8 load mask.hio
+anda([sysArgs+3])               #9
+st([vAC+1])                     #10 AC.hi = mask.hi AND y.hi
+ora([vAC])                      #11
+beq('NEXT')                     #12
+ld(-14/2)                       #13
+ld([sysArgs+4])                 #14 load sum.lo
+adda([sysArgs+0])               #15 load x.lo
+st([sysArgs+4])                 #16 sum.lo = sum.lo + x.lo
+bmi(pc()+4)                     #17 check for carry
+suba([sysArgs+0])               #18 get original sum.lo back
+bra(pc()+4)                     #19
+ora([sysArgs+0])                #20 carry in bit 7
+nop()                           #19
+anda([sysArgs+0])               #20 carry in bit 7
+anda(0x80,X)                    #21
+ld([X])                         #22
+adda([sysArgs+5])               #23
+adda([sysArgs+1])               #24
+st([sysArgs+5])                 #25 sum.hi = sum.hi + x.hi
+bra('NEXT')                     #26
+ld(-28/2)                       #27
+
+label('.sysm16#3b')
+ld('.sysm16#3a')                #3
+st([fsmState])                  #4
+ld([sysArgs+0])                 #5  AC = x.lo
+anda(0x80,X)                    #6  X = AC & 0x80
+adda([sysArgs+0])               #7  AC = x.lo <<1
+st([sysArgs+0])                 #8  x.lo = AC
+ld([X])                         #9  AC = X >>7
+adda([sysArgs+1])               #10
+adda([sysArgs+1])               #11
+st([sysArgs+1])                 #12 x.hi = x.hi <<1 + AC
+ld([sysArgs+6])                 #13 AC = mask.lo
+anda(0x80,X)                    #14 X = AC & 0x80
+adda([sysArgs+6])               #15 AC = mask.lo <<1
+st([sysArgs+6])                 #16 mask.lo = AC
+ld([X])                         #17 AC = X >>7
+adda([sysArgs+7])               #18
+adda([sysArgs+7])               #19
+st([sysArgs+7])                 #20 mask.hi = mask.hi <<1 + AC
+ora([sysArgs+6])                #21
+bne('NEXT')                     #22
+ld(-24//2)                      #23
+ld('.sysm16#3c')                #24
+st([fsmState])                  #25
+bra('NEXT')                     #26
+ld(-28//2)                      #27
+
+label('.sysm16#3c')
+ld([sysArgs+4])                 #3 copy result in AC
+st([vAC])                       #4
+ld([sysArgs+5])                 #5
+st([vAC+1])                     #6
+ld(0)                           #7 restore [sysFn+1]
+st([fsmState])                  #8
+ld(hi('ENTER'))                 #9 exit fsm
+st([vCpuSelect])                #10
+ld(hi('REENTER'),Y)             #11
+jmp(Y,'REENTER')                #12
+ld(-16//2)                      #13
 
 
 #-----------------------------------------------------------------------
