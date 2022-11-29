@@ -127,8 +127,8 @@
 #  DONE Racer: Control speed with up/down (better for TypeC controllers)
 #  DONE Racer: Make noise when crashing
 #  NO   Loader: make noise while loading (only channel 1 is safe to use)
-#  XXX  Faster SYS_Exec_88, with start address (GT1)?
-#  XXX  Let SYS_Exec_88 clear channelMask when loading into live channels
+#  DONE Faster SYS_Exec_88, with start address (GT1)?
+#  DONE Let SYS_Exec_88 clear channelMask when loading into live channels
 #  UNK  Investigate: Babelfish sometimes freezes during power-on?
 #
 #  Ideas for ROM v6+
@@ -331,6 +331,7 @@ assert romType == channelMask
 # SYS function arguments and results/scratch
 sysFn           = zpByte(2)
 sysArgs         = zpByte(8)
+fsmState        = sysArgs+7
 
 # Play sound if non-zero, count down and stop sound when zero
 soundTimer      = zpByte()
@@ -773,6 +774,7 @@ ld(-20/2)                       #17
 
 #-----------------------------------------------------------------------
 # Extension SYS_Multiply_s16_v6_66: 16 bit multiplication
+# Also known as SYS_Multiply_s16_DEVROM_34.
 #-----------------------------------------------------------------------
 #
 # Computes C = C + A * B where A,B,C are 16 bits integers.
@@ -781,17 +783,19 @@ ld(-20/2)                       #17
 #       sysArgs[0:1]    Multiplicand A (in)
 #       sysArgs[2:3]    Multiplicand B (in)
 #       sysArgs[4:5]    C (inout)
-#       sysArgs[6:7]    Must be set to 1 (in)
+#       sysArgs[6:7]    (changed)
 #
 # Original implementation: at67
 
 label('SYS_Multiply_s16_v6_66')
+label('SYS_Multiply_s16_DEVROM_34')
 ld(hi('sys_Multiply_s16'),Y)    #15 slot 0x9e
 jmp(Y,'sys_Multiply_s16')       #16
 ld([sysArgs+6])                 #17 load mask.lo
 
 #-----------------------------------------------------------------------
 # Extension SYS_Divide_s16_v6_80: 15 bit division
+# Also known as SYS_Divide_s16_DEVROM_34
 #-----------------------------------------------------------------------
 #
 # Computes the Euclidean division of 0<=A<=32767 and 0<B<=32767.
@@ -800,12 +804,13 @@ ld([sysArgs+6])                 #17 load mask.lo
 #
 #       sysArgs[0:1]    Dividend A (in) Quotient (out)
 #       sysArgs[2:3]    Divisor B (in)
-#       sysArgs[4:5]    Must be set to 0 (in) Remainder (out)
-#       sysArgs[6:7]    Must be set to 1 (in)
+#       sysArgs[4:5]    Remainder (out)
+#       sysArgs[6:7]    (changed)
 #
 # Original implementation: at67
 
 label('SYS_Divide_s16_v6_80')
+label('SYS_Divide_s16_DEVROM_34')
 ld(hi('sys_Divide_s16'),Y)      #15 slot 0xa1
 jmp(Y,'sys_Divide_s16')         #16
 ld([sysArgs+4])                 #17
@@ -834,19 +839,21 @@ ld(-20/2)                       #17
 # Used during reset, but also for switching between applications or for
 # loading data from ROM from within an application (overlays).
 #
-# ROM stream format is [<addrH> <addrL> <n&255> n*<byte>]* 0
+# ROM stream format is
+#  [<addrH> <addrL> <n&255> n*<byte>]* 0 [<execH> <execL>]
 # on top of lookup tables.
 #
 # Variables:
 #       sysArgs[0:1]    ROM pointer (in)
-#       sysArgs[2:3]    RAM pointer (changed)
-#       sysArgs[4]      State counter (changed)
-#       vLR             vCPU continues here (in)
-
+#       sysArgs[2:3]    RAM pointer (changed) Execution address (out)
+#       sysArgs[4]      Byte counter (changed)
+#       sysArgs[7]      FSM state (changed)
+#       vLR==0          vCPU continues at GT1 execution address (in)
+#       vLR!=0          vCPU continues at vLR (in)
 label('SYS_Exec_88')
 ld(hi('sys_Exec'),Y)            #15
 jmp(Y,'sys_Exec')               #16
-ld(0)                           #17 Address of loader on zero page
+ld(0)                           #17
 
 #-----------------------------------------------------------------------
 # More placeholders for future SYS functions
@@ -2178,7 +2185,6 @@ ld([vAC],X)                     #15
 ld([vAC+1],Y)                   #16
 ld([Y,X])                       #17
 st([vAC])                       #18
-label('lupReturn#19')           #Nice coincidence that lupReturn can be here
 ld(0)                           #19
 st([vAC+1])                     #20
 ld(hi('REENTER'),Y)             #21
@@ -5194,10 +5200,18 @@ ld(hi('v6502_next'),Y)          #33
 jmp(Y,'v6502_next')             #34
 ld(-36/2)                       #35
 
+
+#-----------------------------------------------------------------------
+#
+#  $1200 ROM page 18: Extended vbl & SYS calls
+#
+#-----------------------------------------------------------------------
+
+align(0x100, size=0x100)
+
 #-----------------------------------------------------------------------
 #       Extended vertical blank logic: interrupts
 #-----------------------------------------------------------------------
-align(0x100)
 
 # Check if an IRQ handler is defined
 label('vBlankFirst#78')
@@ -5323,80 +5337,6 @@ nop()                           #47
 #       More SYS functions
 #-----------------------------------------------------------------------
 
-# SYS_Exec_88 implementation
-label('sys_Exec')
-st([vPC+1],Y)                   #18 Clear vPCH and Y
-ld([vSP])                       #19 Place ROM loader below current stack pointer
-suba(53+2)                      #20 (AC -> *+0) One extra word for PUSH
-st([vTmp],X)                    #21
-adda(-2)                        #22 (AC -> *-2)
-st([vPC])                       #23
-# Start of manually compiled vCPU section
-st('PUSH',    [Y,Xpp])          #24 *+0
-st('CALL',    [Y,Xpp])          #25 *+26 Fetch first byte
-adda(33-(-2))                   #26 (AC -> *+33)
-st(           [Y,Xpp])          #27 *+27
-st('ST',      [Y,Xpp])          #28 *+3 Chunk copy loop
-st(sysArgs+3, [Y,Xpp])          #29 *+4 High-address comes first
-st('CALL',    [Y,Xpp])          #30 *+5
-st(           [Y,Xpp])          #31 *+6
-st('ST',      [Y,Xpp])          #32 *+7
-st(sysArgs+2, [Y,Xpp])          #33 *+8 Then the low address
-st('CALL',    [Y,Xpp])          #34 *+9
-st(           [Y,Xpp])          #35 *+10
-st('ST',      [Y,Xpp])          #36 *+11 Byte copy loop
-st(sysArgs+4, [Y,Xpp])          #37 *+12 Byte count (0 means 256)
-st('CALL',    [Y,Xpp])          #38 *+13
-st(           [Y,Xpp])          #39 *+14
-st('POKE',    [Y,Xpp])          #40 *+15
-st(sysArgs+2, [Y,Xpp])          #41 *+16
-st('INC',     [Y,Xpp])          #42 *+17
-st(sysArgs+2, [Y,Xpp])          #43 *+18
-st('LD',      [Y,Xpp])          #44 *+19
-st(sysArgs+4, [Y,Xpp])          #45 *+20
-st('SUBI',    [Y,Xpp])          #46 *+21
-st(1,         [Y,Xpp])          #47 *+22
-st('BCC',     [Y,Xpp])          #48 *+23
-st('NE',      [Y,Xpp])          #49 *+24
-adda(11-2-33)                   #50 (AC -> *+9)
-st(           [Y,Xpp])          #51 *+25
-st('CALL',    [Y,Xpp])          #52 *+26 Go to next block
-adda(33-9)                      #53 (AC -> *+33)
-st(           [Y,Xpp])          #54 *+27
-st('BCC',     [Y,Xpp])          #55 *+28
-st('NE',      [Y,Xpp])          #56 *+29
-adda(3-2-33)                    #57 (AC -> *+1)
-st(           [Y,Xpp])          #58 *+30
-st('POP',     [Y,Xpp])          #59 *+31 End
-st('RET',     [Y,Xpp])          #60 *+32
-# Pointer constant pointing to the routine below (for use by CALL)
-adda(35-1)                      #61 (AC -> *+35)
-st(           [Y,Xpp])          #62 *+33
-st(0,         [Y,Xpp])          #63 *+34
-# Routine to read next byte from ROM and advance read pointer
-st('LD',      [Y,Xpp])          #64 *+35 Test for end of ROM table
-st(sysArgs+0, [Y,Xpp])          #65 *+36
-st('XORI',    [Y,Xpp])          #66 *+37
-st(251,       [Y,Xpp])          #67 *+38
-st('BCC',     [Y,Xpp])          #68 *+39
-st('NE',      [Y,Xpp])          #69 *+40
-adda(46-2-35)                   #70 (AC -> *+44)
-st(           [Y,Xpp])          #71 *+41
-st('ST',      [Y,Xpp])          #72 *+42 Wrap to next ROM page
-st(sysArgs+0, [Y,Xpp])          #73 *+43
-st('INC',     [Y,Xpp])          #74 *+44
-st(sysArgs+1, [Y,Xpp])          #75 *+45
-st('LDW',     [Y,Xpp])          #76 *+46 Read next byte from ROM table
-st(sysArgs+0, [Y,Xpp])          #77 *+47
-st('LUP',     [Y,Xpp])          #78 *+48
-st(0,         [Y,Xpp])          #79 *+49
-st('INC',     [Y,Xpp])          #80 *+50 Increment read pointer
-st(sysArgs+0, [Y,Xpp])          #81 *+51
-st('RET',     [Y,Xpp])          #82 *+52 Return
-# Return to interpreter
-ld(hi('REENTER'),Y)             #83
-jmp(Y,'REENTER')                #84
-ld(-88/2)                       #85
 
 # SYS_VDrawBits_134 implementation
 label('sys_VDrawBits')
@@ -5498,10 +5438,116 @@ ld(hi('NEXTY'),Y)               #40
 jmp(Y,'NEXTY')                  #41
 ld(-44/2)                       #42
 
+# SYS_ScanMemory_DEVROM_50 implementation
+label('sys_ScanMemory')
+ld([sysArgs+0],X)                    #18
+ld([Y,X])                            #19
+label('.sysSme#20')
+xora([sysArgs+2])                    #20
+beq('.sysSme#23')                    #21
+ld([Y,X])                            #22
+xora([sysArgs+3])                    #23
+beq('.sysSme#26')                    #24
+ld([sysArgs+0])                      #25
+adda(1);                             #26
+st([sysArgs+0],X)                    #27
+ld([vAC])                            #28
+suba(1)                              #29
+beq('.sysSme#32')                    #30 return zero
+st([vAC])                            #31
+ld(-18/2)                            #14 = 32 - 18
+adda([vTicks])                       #15
+st([vTicks])                         #16
+adda(min(0,maxTicks -(28+18)/2))     #17
+bge('.sysSme#20')                    #18
+ld([Y,X])                            #19
+ld(-2)                               #20 restart
+adda([vPC])                          #21
+st([vPC])                            #22
+ld(hi('REENTER'),Y)                  #23
+jmp(Y,'REENTER')                     #24
+ld(-28/2)                            #25
+label('.sysSme#32')
+st([vAC+1])                          #32 return zero
+ld(hi('REENTER'),Y)                  #33
+jmp(Y,'REENTER')                     #34
+ld(-38/2)                            #35
+label('.sysSme#23')
+nop()                                #23 success
+nop()                                #24
+ld([sysArgs+0])                      #25
+label('.sysSme#26')
+st([vAC])                            #26 success
+ld([sysArgs+1])                      #27
+st([vAC+1])                          #28
+ld(hi('REENTER'),Y)                  #29
+jmp(Y,'REENTER')                     #30
+ld(-34/2)                            #31
+
+# SYS_ScanMemoryExt_DEVROM_50 implementation
+label('sys_ScanMemoryExt')
+ora(0x3c,X)                          #18
+ctrl(X)                              #19
+ld([sysArgs+1],Y)                    #20
+ld([sysArgs+0],X)                    #21
+ld([Y,X])                            #22
+nop()                                #23
+label('.sysSmx#24')
+xora([sysArgs+2])                    #24
+beq('.sysSmx#27')                    #25
+ld([Y,X])                            #26
+xora([sysArgs+3])                    #27
+beq('.sysSmx#30')                    #28
+ld([sysArgs+0])                      #29
+adda(1);                             #30
+st([sysArgs+0],X)                    #31
+ld([vAC])                            #32
+suba(1)                              #33
+beq('.sysSmx#36')                    #34 return zero
+st([vAC])                            #35
+ld(-18/2)                            #18 = 36 - 18
+adda([vTicks])                       #19
+st([vTicks])                         #20
+adda(min(0,maxTicks -(30+18)/2))     #21
+bge('.sysSmx#24')                    #22
+ld([Y,X])                            #23
+ld([vPC])                            #24
+suba(2)                              #25 restart
+st([vPC])                            #26
+ld(hi(ctrlBits),Y)                   #27 restore and return
+ld([Y,ctrlBits])                     #28
+anda(0xfc,X)                         #29
+ctrl(X)                              #30
+ld([vTmp])                           #31
+ld(hi('NEXTY'),Y)                    #32
+jmp(Y,'NEXTY')                       #33
+ld(-36/2)                            #34
+label('.sysSmx#27')
+nop()                                #27 success
+nop()                                #28
+ld([sysArgs+0])                      #29
+label('.sysSmx#30')
+st([vAC])                            #30 success
+ld([sysArgs+1])                      #31
+nop()                                #32
+nop()                                #33
+nop()                                #34
+nop()                                #35
+label('.sysSmx#36')
+st([vAC+1])                          #36
+ld(hi(ctrlBits),Y)                   #37 restore and return
+ld([Y,ctrlBits])                     #38
+anda(0xfc,X)                         #39
+ctrl(X)                              #40
+ld([vTmp])                           #41
+ld(hi('NEXTY'),Y)                    #42
+jmp(Y,'NEXTY')                       #43
+ld(-46/2)                            #44
+
 
 #-----------------------------------------------------------------------
 #
-#  $1300 ROM page 19/20: SYS calls
+#  $1300 ROM page 19: SYS calls
 #
 #-----------------------------------------------------------------------
 
@@ -5719,140 +5765,38 @@ ld(hi('REENTER'),Y)                  #33
 jmp(Y,'REENTER')                     #34
 ld(-38/2)                            #35 max: 38 + 52 = 90 cycles
 
-align(0x100, size=0x100)
 
 #-----------------------------------------------------------------------
-# SYS_ScanMemory_v6_50 implementation
+# Trampoline return stub
 
-label('sys_ScanMemory')
-ld([sysArgs+0],X)                    #18
-ld([Y,X])                            #19
-label('.sysSme#20')
-xora([sysArgs+2])                    #20
-beq('.sysSme#23')                    #21
-ld([Y,X])                            #22
-xora([sysArgs+3])                    #23
-beq('.sysSme#26')                    #24
-ld([sysArgs+0])                      #25
-adda(1);                             #26
-st([sysArgs+0],X)                    #27
-ld([vAC])                            #28
-suba(1)                              #29
-beq('.sysSme#32')                    #30 return zero
-st([vAC])                            #31
-ld(-18/2)                            #14 = 32 - 18
-adda([vTicks])                       #15
-st([vTicks])                         #16
-adda(min(0,maxTicks -(28+18)/2))     #17
-bge('.sysSme#20')                    #18
-ld([Y,X])                            #19
-ld(-2)                               #20 restart
-adda([vPC])                          #21
-st([vPC])                            #22
-ld(hi('REENTER'),Y)                  #23
-jmp(Y,'REENTER')                     #24
-ld(-28/2)                            #25
-
-label('.sysSme#32')
-st([vAC+1])                          #32 return zero
-ld(hi('REENTER'),Y)                  #33
-jmp(Y,'REENTER')                     #34
-ld(-38/2)                            #35
-
-label('.sysSme#23')
-nop()                                #23 success
-nop()                                #24
-ld([sysArgs+0])                      #25
-label('.sysSme#26')
-st([vAC])                            #26 success
-ld([sysArgs+1])                      #27
-st([vAC+1])                          #28
-ld(hi('REENTER'),Y)                  #29
-jmp(Y,'REENTER')                     #30
-ld(-34/2)                            #31
-
-
-#-----------------------------------------------------------------------
-# SYS_ScanMemoryExt_v6_50 implementation
-
-label('sys_ScanMemoryExt')
-ora(0x3c,X)                          #18
-ctrl(X)                              #19
-ld([sysArgs+1],Y)                    #20
-ld([sysArgs+0],X)                    #21
-ld([Y,X])                            #22
-nop()                                #23
-label('.sysSmx#24')
-xora([sysArgs+2])                    #24
-beq('.sysSmx#27')                    #25
-ld([Y,X])                            #26
-xora([sysArgs+3])                    #27
-beq('.sysSmx#30')                    #28
-ld([sysArgs+0])                      #29
-adda(1);                             #30
-st([sysArgs+0],X)                    #31
-ld([vAC])                            #32
-suba(1)                              #33
-beq('.sysSmx#36')                    #34 return zero
-st([vAC])                            #35
-ld(-18/2)                            #18 = 36 - 18
-adda([vTicks])                       #19
-st([vTicks])                         #20
-adda(min(0,maxTicks -(30+18)/2))     #21
-bge('.sysSmx#24')                    #22
-ld([Y,X])                            #23
-ld([vPC])                            #24
-suba(2)                              #25 restart
-st([vPC])                            #26
-ld(hi(ctrlBits),Y)                   #27 restore and return
-ld([Y,ctrlBits])                     #28
-anda(0xfc,X)                         #29
-ctrl(X)                              #30
-ld([vTmp])                           #31
-ld(hi('NEXTY'),Y)                    #32
-jmp(Y,'NEXTY')                       #33
-ld(-36/2)                            #34
-
-label('.sysSmx#27')
-nop()                                #27 success
-nop()                                #28
-ld([sysArgs+0])                      #29
-label('.sysSmx#30')
-st([vAC])                            #30 success
-ld([sysArgs+1])                      #31
-nop()                                #32
-nop()                                #33
-nop()                                #34
-nop()                                #35
-label('.sysSmx#36')
-st([vAC+1])                          #36
-ld(hi(ctrlBits),Y)                   #37 restore and return
-ld([Y,ctrlBits])                     #38
-anda(0xfc,X)                         #39
-ctrl(X)                              #40
-ld([vTmp])                           #41
-ld(hi('NEXTY'),Y)                    #42
-jmp(Y,'NEXTY')                       #43
-ld(-46/2)                            #44
-
+label('lupReturn#19')
+ld(0)                           #19 trampoline returns here
+st([vAC+1])                     #20
+ld([vCpuSelect])                #21 to current interpreter
+adda(1,Y)                       #22
+ld(-26/2)                       #23
+jmp(Y,'NEXT')                   #24 using NEXT
+ld([vPC+1],Y)                   #25
 
 #-----------------------------------------------------------------------
 # Reserved space
 
+  
+
 
 #-----------------------------------------------------------------------
 #
-#  $1500 FSM tests
+#  $1400 ROM page 20: SYS calls (with FSM)
 #
 #-----------------------------------------------------------------------
-
-fsmState=sysFn+1 
 
 fillers(until=0xff)
-bra(pc()+4)                     #0 ($14ff)
+label('FSM14_ENTER')
+bra(pc()+4)                     #0
 align(0x100, size=0x100)
-bra([fsmState])                 #1 ($1500)
+bra([fsmState])                 #1
 assert (pc() & 255) == (symbol('NEXT') & 255)
+label('FSM14_NEXT')
 adda([vTicks])                  #0
 bge([fsmState])                 #1
 st([vTicks])                    #2
@@ -5869,24 +5813,32 @@ ld(0)                           #8
 #
 # Original implementation by at67 reshuffled for fsm.
 
+# Mask is in vAC instead of sysArgs67
+# because sysArgs7 is now fsmState.
+
+
 label('sys_Multiply_s16')
 ld('.sysm16#3a')                #18
 st([fsmState])                  #19
 ld((pc()>>8)-1)                 #20
 st([vCpuSelect])                #21
-bra('NEXT')                     #22 
-ld(-24/2)                       #23
+ld(0)                           #22
+st([vAC+1])                     #23
+ld(1)                           #24
+st([vAC])                       #25
+bra('NEXT')                     #26
+ld(-28/2)                       #27
 
 label('.sysm16#3a')
 ld('.sysm16#3b')                #3
 st([fsmState])                  #4
-ld([sysArgs+6])                 #5 load mask.lo
+ld([vAC])                       #5 load mask.lo
 anda([sysArgs+2])               #6
-st([vAC])                       #7 AC.lo = mask.lo AND y.lo
-ld([sysArgs+7])                 #8 load mask.hio
+st([vTmp])                      #7 AC.lo = mask.lo AND y.lo
+ld([vAC+1])                     #8 load mask.hio
 anda([sysArgs+3])               #9
-st([vAC+1])                     #10 AC.hi = mask.hi AND y.hi
-ora([vAC])                      #11
+ora([vTmp])                     #10 AC.hi = mask.hi AND y.hi
+nop()                           #11
 beq('NEXT')                     #12
 ld(-14/2)                       #13
 ld([sysArgs+4])                 #14 load sum.lo
@@ -5917,15 +5869,15 @@ ld([X])                         #9  AC = X >>7
 adda([sysArgs+1])               #10
 adda([sysArgs+1])               #11
 st([sysArgs+1])                 #12 x.hi = x.hi <<1 + AC
-ld([sysArgs+6])                 #13 AC = mask.lo
+ld([vAC])                       #13 AC = mask.lo
 anda(0x80,X)                    #14 X = AC & 0x80
-adda([sysArgs+6])               #15 AC = mask.lo <<1
-st([sysArgs+6])                 #16 mask.lo = AC
+adda([vAC])                     #15 AC = mask.lo <<1
+st([vAC])                       #16 mask.lo = AC
 ld([X])                         #17 AC = X >>7
-adda([sysArgs+7])               #18
-adda([sysArgs+7])               #19
-st([sysArgs+7])                 #20 mask.hi = mask.hi <<1 + AC
-ora([sysArgs+6])                #21
+adda([vAC+1])                   #18
+adda([vAC+1])                   #19
+st([vAC+1])                     #20 mask.hi = mask.hi <<1 + AC
+ora([vAC])                      #21
 bne('NEXT')                     #22
 ld(-24//2)                      #23
 ld('.sysm16#3c')                #24
@@ -5938,13 +5890,11 @@ ld([sysArgs+4])                 #3 copy result in AC
 st([vAC])                       #4
 ld([sysArgs+5])                 #5
 st([vAC+1])                     #6
-ld(0)                           #7 restore [sysFn+1]
-st([fsmState])                  #8
-ld(hi('ENTER'))                 #9 exit fsm
-st([vCpuSelect])                #10
-ld(hi('REENTER'),Y)             #11
-jmp(Y,'REENTER')                #12
-ld(-16//2)                      #13
+ld(hi('ENTER'))                 #7 exit fsm
+st([vCpuSelect])                #8
+ld(hi('REENTER'),Y)             #9
+jmp(Y,'REENTER')                #10
+ld(-14//2)                      #11
 
 
 #-----------------------------------------------------------------------
@@ -5958,8 +5908,12 @@ ld('.sysd16#3a')                #18
 st([fsmState])                  #19
 ld((pc()>>8)-1)                 #20
 st([vCpuSelect])                #21
-bra('NEXT')                     #22 
-ld(-24/2)                       #23
+ld(0)                           #22 init 
+st([sysArgs+4])                 #23
+st([sysArgs+5])                 #24
+st([sysArgs+6])                 #25
+bra('NEXT')                     #26
+ld(-28/2)                       #27
 
 label('.sysd16#3a')
 ld('.sysd16#3b')                #3
@@ -6020,9 +5974,9 @@ ld(-28/2)                       #27
 
 label('.sysd16#3c')
 ld([sysArgs+6])                 #3 count to 16
-suba(16)                        #4
+suba(15)                        #4
 beq('.sysd16#7b')               #5
-adda(17)                        #6
+adda(16)                        #6
 st([sysArgs+6])                 #7
 ld('.sysd16#3a')                #8 loop
 st([fsmState])                  #9
@@ -6037,6 +5991,213 @@ ld(hi('REENTER'),Y)             #11
 jmp(Y,'REENTER')                #12
 ld(-16//2)                      #13
 
+
+#-----------------------------------------------------------------------
+#
+#  $1500 ROM page 21: SYS_Exec (FSM)
+#
+#-----------------------------------------------------------------------
+
+fsmState=sysArgs+7
+
+fillers(until=0xff)
+label('FSM15_ENTER')
+bra(pc()+4)                     #0
+align(0x100, size=0x100)
+bra([fsmState])                 #1
+assert (pc() & 255) == (symbol('NEXT') & 255)
+label('FSM15_NEXT')
+adda([vTicks])                  #0
+bge([fsmState])                 #1
+st([vTicks])                    #2
+adda(maxTicks)                  #3
+bgt(pc()&255)                   #4
+suba(1)                         #5
+ld(hi('vBlankStart'),Y)         #6
+jmp(Y,[vReturn])                #7
+ld(0)                           #8
+
+#-----------------------------------------------------------------------
+# Micro FSM instructions
+
+def fsmAsm(op,arg=None):
+  bra('fsm-' + op)                    #3
+  ld(arg) if arg!=None else nop()     #4
+
+# uFSM opcode 'uST'
+# - store vAC into [arg]
+label('fsm-uST')
+ld(AC,X)                        #5
+ld([fsmState])                  #6
+adda(2)                         #7
+st([fsmState])                  #8
+ld([vAC])                       #9
+st([X])                         #10
+nop()                           #11
+bra('NEXT')                     #12
+ld(-14/2)                       #13
+
+# uFSM opcode 'uLDW'
+# - load word [arg] into vAC
+label('fsm-uLDW')
+st([vTmp])                      #5
+adda(1,X)                       #6
+ld([fsmState])                  #7
+adda(2)                         #8
+st([fsmState])                  #9
+ld([X])                         #10
+st([vAC+1])                     #11
+ld([vTmp],X)                    #12
+ld([X])                         #13
+st([vAC])                       #14
+nop()                           #15
+bra('NEXT')                     #16
+ld(-18/2)                       #17
+
+# uFSM opcode 'uBNE'
+# - branch if vAC!=0
+label('fsm-uBNE')
+st([vTmp])                      #5
+ld([vAC])                       #6
+ora([vAC+1])                    #7
+beq('.fsm-bne#10')              #8
+ld([fsmState])                  #9
+ld([vTmp])                      #10
+st([fsmState])                  #11
+bra('NEXT')                     #12
+ld(-14/2)                       #13
+label('.fsm-bne#10') 
+adda(2)                         #10
+st([fsmState])                  #11
+bra('NEXT')                     #12
+ld(-14/2)                       #13
+
+# uFSM opcode 'uRET'
+# - exit fsm and direct vCPU to vLR
+label('fsm-uRET')
+ld(hi('ENTER'))                 #5
+st([vCpuSelect])                #6
+ld(hi('RET'),Y)                 #7
+jmp(Y,'RET')                    #8
+nop()                           #9
+
+# uFSM opcode 'uLUP'
+# useful for implementing sys_Exec
+# - LUP byte at address sysArgs[1..0]
+# - increment sysArgs[0] skipping trampolines
+label('fsm-uLUP')
+adda(min(0,maxTicks-42))        #5
+blt('NEXT')                     #6
+ld(-8/2)                        #7
+ld([fsmState])                  #8
+adda(2)                         #9
+st([fsmState])                  #10
+ld([sysArgs+0])                 #11 wrap at 251
+suba(251)                       #12
+ld([sysArgs+1],Y)               #13
+bne('.fsm-lup#6')               #14
+ld(-10/2)                       #15-10=5
+ld(0)                           #16
+st([sysArgs+0])                 #17
+ld([sysArgs+1])                 #18
+adda(1)                         #19
+st([sysArgs+1],Y)               #20
+ld(-16/2)                       #21-16=5
+label('.fsm-lup#6')
+adda([vTicks])                  #6
+st([vTicks])                    #7
+ld([sysArgs+0])                 #8  increment byte pointer
+adda(1)                         #9
+st([sysArgs+0])                 #10 jump to trampoline
+jmp(Y,251)                      #11 
+suba(1)                         #12 return to lupReturn#19
+
+# uFSM opcode 'uMSKCHNL'
+# useful for implementing loaders
+# - clear channel mask if the gt1 segment
+#   overwrites a channel variable.
+label('fsm-uMSKCHNL')
+ld([fsmState])                  #5
+adda(2)                         #6
+st([fsmState])                  #7
+ld([sysArgs+3])                 #8
+suba(1)                         #9
+anda(0xfc)                      #10
+st([vTmp])                      #11
+ld([sysArgs+2])                 #12
+adda([sysArgs+4])               #13
+adda(1)                         #14
+anda(0xfe)                      #15
+ora([vTmp])                     #16
+beq(pc()+3)                     #17
+bra(pc()+3)                     #18
+ld(0xff)                        #19
+ld(0xfc)                        #19
+anda([channelMask])             #20
+st([channelMask])               #21
+bra('NEXT')                     #22
+ld(-24/2)                       #23
+
+# uFSM opcode 'uDAT'
+# useful for implementing loaders
+# - store vAC into [sysArgs[3..2]]
+# - increment sysArgs[2]
+# - decrement sysArgs[4], copy in vACL/vACH
+label('fsm-uDAT')
+ld([fsmState])                  #5
+adda(2)                         #6
+st([fsmState])                  #7
+ld([vAC])                       #8
+ld([sysArgs+3],Y)               #9
+ld([sysArgs+2],X)               #10
+st([Y,X])                       #11
+ld([sysArgs+2])                 #12
+adda(1)                         #13
+st([sysArgs+2])                 #14
+ld([sysArgs+4])                 #15
+suba(1)                         #16
+st([sysArgs+4])                 #17
+st([vAC])                       #18 for BNE!
+st([vAC+1])                     #19 for BNE!
+bra('NEXT')                     #20
+ld(-22/2)                       #21
+
+
+#-----------------------------------------------------------------------
+# SYS_Exec_80 implementation 
+
+label('syse-prog')
+fsmAsm('uLUP')
+fsmAsm('uST', sysArgs+3)
+label('syse-chunk')
+fsmAsm('uLUP')
+fsmAsm('uST', sysArgs+2)
+fsmAsm('uLUP')
+fsmAsm('uST', sysArgs+4)
+fsmAsm('uMSKCHNL')
+label('syse-data')
+fsmAsm('uLUP')
+fsmAsm('uDAT')
+fsmAsm('uBNE', 'syse-data')
+fsmAsm('uLUP')
+fsmAsm('uST', sysArgs+3)
+fsmAsm('uBNE', 'syse-chunk')
+fsmAsm('uLDW', vLR)
+fsmAsm('uBNE', 'syse-ret')
+fsmAsm('uLUP')
+fsmAsm('uST', vLR+1)
+fsmAsm('uLUP')
+fsmAsm('uST', vLR)
+label('syse-ret')
+fsmAsm('uRET')
+
+label('sys_Exec')
+ld('syse-prog')                 #18
+st([fsmState])                  #19
+ld((pc()>>8)-1)                 #20
+st([vCpuSelect])                #21
+bra('NEXT')                     #22
+ld(-24/2)                       #23
 
 
 #-----------------------------------------------------------------------
