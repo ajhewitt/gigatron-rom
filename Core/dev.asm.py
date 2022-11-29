@@ -783,7 +783,7 @@ ld(-20/2)                       #17
 #       sysArgs[4:5]    C (inout)
 #       sysArgs[6:7]    Must be set to 1 (in)
 #
-# Credits: at67
+# Original implementation: at67
 
 label('SYS_Multiply_s16_v6_66')
 ld(hi('sys_Multiply_s16'),Y)    #15 slot 0x9e
@@ -803,7 +803,7 @@ ld([sysArgs+6])                 #17 load mask.lo
 #       sysArgs[4:5]    Must be set to 0 (in) Remainder (out)
 #       sysArgs[6:7]    Must be set to 1 (in)
 #
-# Credits: at67
+# Original implementation: at67
 
 label('SYS_Divide_s16_v6_80')
 ld(hi('sys_Divide_s16'),Y)      #15 slot 0xa1
@@ -5837,93 +5837,7 @@ ld(-46/2)                            #44
 
 
 #-----------------------------------------------------------------------
-# sys_Divide_s16, x:s16 = x:s16 / y:s16, rem:s16 = x:s16 % y:s16
-# x:args0:1 y:args2:3 rem:args4:5 mask:args6:7
-#
-# Written by at67 for early ROMvX0.
-
-
-label('sys_Divide_s16')
-anda(0x80,X)                    #18, X = AC & 0x80
-adda([sysArgs+4])               #19, AC = rem.lo <<1
-st([sysArgs+4])                 #20, rem.lo = AC
-ld([X])                         #21, AC = X >>7
-adda([sysArgs+5])               #22,
-adda([sysArgs+5])               #23,
-st([sysArgs+5])                 #24, rem.hi = rem.hi <<1 + AC
-ld([sysArgs+1])                 #25,
-anda(0x80)                      #26, sign of x
-beq('.sys_ds16_29')             #27, if x >= 0
-ld([sysArgs+4])                 #28,
-adda(1)                         #29,
-bra('.sys_ds16_32')             #30,
-st([sysArgs+4])                 #31, rem.lo++
-
-label('.sys_ds16_29')
-nop()                           #29
-nop()                           #30
-nop()                           #31
-label('.sys_ds16_32')
-ld([sysArgs+0])                 #32, AC = x.lo
-anda(0x80,X)                    #33, X = AC & 0x80
-adda([sysArgs+0])               #34, AC = x.lo <<1
-st([sysArgs+0])                 #35, x.lo = AC
-ld([X])                         #36, AC = X >>7
-adda([sysArgs+1])               #37,
-adda([sysArgs+1])               #38,
-st([sysArgs+1])                 #39, x.hi = x.hi <<1 + AC
-ld([sysArgs+4])                 #40, load rem.lo
-blt('.sys_ds16_43')             #41, check for borrow
-suba([sysArgs+2])               #42,
-st([vAC])                       #43, vAC.lo = rem.lo - y.lo
-bra('.sys_ds16_46')             #44,
-ora([sysArgs+2])                #45,
-
-label('.sys_ds16_43')
-st([vAC])                       #43,
-anda([sysArgs+2])               #44,
-nop()                           #45,
-label('.sys_ds16_46')
-anda(0x80,X)                    #46, move borrow to bit 0
-ld([sysArgs+5])                 #47, load rem.hi
-suba([X])                       #48,
-suba([sysArgs+3])               #49,
-st([vAC+1])                     #50, vAC.hi = rem.hi - y.hi
-blt('.sys_ds16_53')             #51,
-ld(-72/2)                       #52
-ld([vAC])                       #53,
-st([sysArgs+4])                 #54,
-ld([vAC+1])                     #55,
-st([sysArgs+5])                 #56, rem = vAC
-ld([sysArgs+0])                 #57,
-adda(1)                         #58,
-st([sysArgs+0])                 #59, x.lo++
-ld(-80/2)                       #60,
-
-label('.sys_ds16_53')
-st([vTmp])                      #53, #61,
-ld([sysArgs+6])                 #54, #62, AC = mask.lo
-anda(0x80,X)                    #55, #63, X = AC & 0x80
-adda([sysArgs+6])               #56, #64, AC = mask.lo <<1
-st([sysArgs+6])                 #57, #65, mask.lo = AC
-ld([X])                         #58, #66, AC = X >>7
-adda([sysArgs+7])               #59, #67,
-adda([sysArgs+7])               #60, #68,
-st([sysArgs+7])                 #61, #69, mask.hi = mask.hi <<1 + AC
-ora([sysArgs+6])                #62, #70,
-bne('.sys_ds16_65')             #63, #71,
-ld([vPC])                       #64, #72,
-nop()                           #65, #73,
-nop()                           #66, #74,
-ld(hi('REENTER'),Y)             #67, #75,
-jmp(Y,'REENTER')                #68, #76,
-ld([vTmp])                      #69, #77,
-label('.sys_ds16_65')
-suba(2)                         #65, #73,
-st([vPC])                       #66, #74, restart SYS function
-ld(hi('REENTER'),Y)             #67, #75,
-jmp(Y,'REENTER')                #68, #76,
-ld([vTmp])                      #69, #77,
+# Reserved space
 
 
 #-----------------------------------------------------------------------
@@ -5953,7 +5867,7 @@ ld(0)                           #8
 # sys_Multiply_s16, sum:s16 = x:s16 * y:s16
 # x:args0:1 y:args2:3 sum:args4:5 mask:args6:7
 #
-# Original version by at67
+# Original implementation by at67 reshuffled for fsm.
 
 label('sys_Multiply_s16')
 ld('.sysm16#3a')                #18
@@ -6034,8 +5948,100 @@ ld(-16//2)                      #13
 
 
 #-----------------------------------------------------------------------
+# sys_Divide_s16, x:s16 = x:s16 / y:s16, rem:s16 = x:s16 % y:s16
+# x:args0:1 y:args2:3 rem:args4:5 mask:args6:7
 #
-#  End of core
+# Original implementation by at67 reshuffled for fsm.
+
+label('sys_Divide_s16')
+ld('.sysd16#3a')                #18
+st([fsmState])                  #19
+ld((pc()>>8)-1)                 #20
+st([vCpuSelect])                #21
+bra('NEXT')                     #22 
+ld(-24/2)                       #23
+
+label('.sysd16#3a')
+ld('.sysd16#3b')                #3
+st([fsmState])                  #4
+ld([sysArgs+4])                 #5 lsl sysArgs5<4<1<0
+anda(0x80,X)                    #6  
+adda([sysArgs+4])               #7
+st([sysArgs+4])                 #8
+ld([sysArgs+5])                 #9
+adda([sysArgs+5])               #10
+adda([X])                       #11
+st([sysArgs+5])                 #12
+ld([sysArgs+1])                 #13
+anda(0x80,X)                    #14
+ld([sysArgs+4])                 #15
+ora([X])                        #16
+st([sysArgs+4])                 #17
+ld([sysArgs+0])                 #18
+anda(0x80,X)                    #19
+adda([sysArgs+0])               #20
+st([sysArgs+0])                 #21
+ld([sysArgs+1])                 #22
+adda([sysArgs+1])               #23
+adda([X])                       #24
+st([sysArgs+1])                 #25
+bra('NEXT')                     #26
+ld(-28/2)                       #27
+
+label('.sysd16#3b')
+ld('.sysd16#3c')                #3
+st([fsmState])                  #4
+ld([sysArgs+4])                 #5 vAC=sysArgs[45]-sysArgs[23]
+bmi(pc()+5)                     #6
+suba([sysArgs+2])               #7
+st([vAC])                       #8
+bra(pc()+5)                     #9
+ora([sysArgs+2])                #10
+st([vAC])                       #8
+nop()                           #9
+anda([sysArgs+2])               #10
+anda(0x80,X)                    #11
+ld([sysArgs+5])                 #12
+suba([sysArgs+3])               #13
+suba([X])                       #14
+st([vAC+1])                     #15
+bmi('NEXT')                     #16 
+ld(-18/2)                       #17
+ld([sysArgs+0])                 #19 vAC>=0 
+ora(1)                          #18 sysArgs[0]++
+st([sysArgs+0])                 #20
+ld([vAC])                       #21 sysArgs[45]=vAC
+st([sysArgs+4])                 #22
+ld([vAC+1])                     #23
+st([sysArgs+5])                 #24
+nop()                           #25
+bra('NEXT')                     #26
+ld(-28/2)                       #27
+
+label('.sysd16#3c')
+ld([sysArgs+6])                 #3 count to 16
+suba(16)                        #4
+beq('.sysd16#7b')               #5
+adda(17)                        #6
+st([sysArgs+6])                 #7
+ld('.sysd16#3a')                #8 loop
+st([fsmState])                  #9
+bra('NEXT')                     #10
+ld(-12/2)                       #11
+label('.sysd16#7b')
+ld(0)                           #7 restore [sysFn+1]
+st([fsmState])                  #8
+ld(hi('ENTER'))                 #9 exit fsm
+st([vCpuSelect])                #10
+ld(hi('REENTER'),Y)             #11
+jmp(Y,'REENTER')                #12
+ld(-16//2)                      #13
+
+
+
+#-----------------------------------------------------------------------
+#
+#  end of core
 #
 #-----------------------------------------------------------------------
 
