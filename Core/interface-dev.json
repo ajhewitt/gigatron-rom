@@ -1,2 +1,4 @@
 {
+    "SYS_Multiply_s16_DEVROM_34"      : "0x9e",
+    "SYS_Divide_s16_DEVROM_34"        : "0xa1"
 }
