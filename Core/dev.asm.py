@@ -360,7 +360,7 @@ userVars_v5     = zpByte(0)
 userVars_v6     = zpByte(0)
 
 # [0x80]
-# Constant 0x01. 
+# Constant 0x01.
 zpReset(0x80)
 oneConst        = zpByte(1)
 userVars2       = zpByte(0)
@@ -855,15 +855,44 @@ ld(-20/2)                       #17
 label('SYS_Exec_88')
 ld(hi('sys_Exec'),Y)            #15
 jmp(Y,'sys_Exec')               #16
-ld(0)                           #17
+nop()                           #17
+
+#-----------------------------------------------------------------------
+# Extension SYS_Loader_DEVROM_44: Load code from serial input and execute
+#-----------------------------------------------------------------------
+#
+# This loads vCPU code and data presented on the serial port according
+# to the loader protocol, then jumps to the avertised execution
+# address. This call takes no argument and never returns.
+# It loops until receiving an acceptable payload.
+#
+# Credits: The first native loader was written for ROMvX0 by at67.
+#
+# Loader protocol
+# ---------------
+# The data is divided into chunks of at most 60 bytes to be loaded at
+# contiguous addresses inside a same gigatron memory page. Each chunk
+# is transmitted over the serial port (IN) synchronously with the
+# video signal, one chunk per frame. Each byte of the chunk must be
+# read from the IN port when videoY takes specific values:
+#
+#  videoY    Data
+#   207      protocol signature: 'L'
+#   219      chunk length (low 6 bits) or zero to execute.
+#   235      chunk address (l) or execution address (l) if len=0
+#   251      chunk address (h) or execution address (h)  if len=0
+#   2        chunk byte 0
+#   6        chunk byte 1
+#  ....
+#   2+4*k    chunk byte k
+
+ld(hi('sys_Loader'),Y)          #15 slot 0xb0
+jmp(Y,'sys_Loader')             #16
+nop()                           #17
 
 #-----------------------------------------------------------------------
 # More placeholders for future SYS functions
 #-----------------------------------------------------------------------
-
-ld(hi('REENTER'),Y)             #15 slot 0xb0
-jmp(Y,'REENTER')                #16
-ld(-20/2)                       #17
 
 ld(hi('REENTER'),Y)             #15 slot 0xb3
 jmp(Y,'REENTER')                #16
@@ -5783,7 +5812,7 @@ ld([vPC+1],Y)                   #25
 #-----------------------------------------------------------------------
 # Reserved space
 
-  
+
 
 
 #-----------------------------------------------------------------------
@@ -5905,7 +5934,7 @@ ld([sysArgs+4])                 #6  exit
 st([vAC])                       #7
 ld([sysArgs+5])                 #8
 st([vAC+1])                     #9
-ld(hi('ENTER'))                 #10 
+ld(hi('ENTER'))                 #10
 st([vCpuSelect])                #11
 ld(hi('NEXTY'),Y)               #12
 jmp(Y,'NEXTY')                  #13
@@ -5923,7 +5952,7 @@ ld('sysd#3a')                   #18
 st([fsmState])                  #19
 ld((pc()>>8)-1)                 #20
 st([vCpuSelect])                #21
-ld(0)                           #22 init 
+ld(0)                           #22 init
 st([sysArgs+4])                 #23
 st([sysArgs+5])                 #24
 ld(16)                          #25
@@ -6048,14 +6077,11 @@ jmp(Y,'REENTER')                #10
 ld(-14//2)                      #11
 
 
-
 #-----------------------------------------------------------------------
 #
 #  $1500 ROM page 21: SYS_Exec (FSM)
 #
 #-----------------------------------------------------------------------
-
-fsmState=sysArgs+7
 
 fillers(until=0xff)
 label('FSM15_ENTER')
@@ -6081,35 +6107,45 @@ def fsmAsm(op,arg=None):
   bra('fsm-' + op)                    #3
   ld(arg) if arg!=None else nop()     #4
 
-# uFSM opcode 'uST'
-# - store vAC into [arg]
-label('fsm-uST')
-ld(AC,X)                        #5
-ld([fsmState])                  #6
-adda(2)                         #7
-st([fsmState])                  #8
-ld([vAC])                       #9
-st([X])                         #10
-nop()                           #11
+# uFSM opcode 'uANDI'
+# - vAC := vAC & arg
+label('fsm-uANDI')
+anda([vAC])                     #5
+st([vAC])                       #6
+ld(0)                           #7
+st([vAC+1])                     #8
+label('fsm-next#9')
+ld([fsmState])                  #9
+label('fsm-next#10')
+adda(2)                         #10
+st([fsmState])                  #11
 bra('NEXT')                     #12
 ld(-14/2)                       #13
 
-# uFSM opcode 'uLDW'
-# - load word [arg] into vAC
-label('fsm-uLDW')
-st([vTmp])                      #5
-adda(1,X)                       #6
-ld([fsmState])                  #7
-adda(2)                         #8
-st([fsmState])                  #9
-ld([X])                         #10
-st([vAC+1])                     #11
-ld([vTmp],X)                    #12
-ld([X])                         #13
-st([vAC])                       #14
-nop()                           #15
-bra('NEXT')                     #16
-ld(-18/2)                       #17
+# uFSM opcode 'uST'
+# - [arg] := vACL
+label('fsm-uST')
+ld(AC,X)                        #5
+ld([vAC])                       #6
+st([X])                         #7
+label('fsm-next#8')
+bra('fsm-next#10')              #8
+ld([fsmState])                  #9
+
+# uFSM opcode 'uXORI'
+# - vAC := vAC ^ arg
+label('fsm-uXORI')
+xora([vAC])                     #5
+bra('fsm-next#8')               #6
+st([vAC])                       #7
+
+# uFSM opcode 'uLDI'
+# - vAC := byte [arg]
+label('fsm-uLDI')
+st([vAC])                       #5
+ld(0)                           #6
+bra('fsm-next#9')               #7
+st([vAC+1])                     #8
 
 # uFSM opcode 'uBNE'
 # - branch if vAC!=0
@@ -6117,17 +6153,30 @@ label('fsm-uBNE')
 st([vTmp])                      #5
 ld([vAC])                       #6
 ora([vAC+1])                    #7
-beq('.fsm-bne#10')              #8
+beq('fsm-next#10')              #8
 ld([fsmState])                  #9
 ld([vTmp])                      #10
 st([fsmState])                  #11
 bra('NEXT')                     #12
 ld(-14/2)                       #13
-label('.fsm-bne#10') 
-adda(2)                         #10
-st([fsmState])                  #11
-bra('NEXT')                     #12
-ld(-14/2)                       #13
+
+# uFSM opcode 'uLDW'
+# - vAC := word [arg]
+label('fsm-uLDW')
+st([vTmp])                      #5
+adda(1,X)                       #6
+ld([X])                         #7
+st([vAC+1])                     #8
+ld([vTmp],X)                    #9
+nop()                           #10
+label('fsm-ldw#11')
+ld([X])                         #11
+st([vAC])                       #12
+ld([fsmState])                  #13
+adda(2)                         #14
+st([fsmState])                  #15
+bra('NEXT')                     #16
+ld(-18/2)                       #17
 
 # uFSM opcode 'uRET'
 # - exit fsm and direct vCPU to vLR
@@ -6138,107 +6187,104 @@ ld(hi('RET'),Y)                 #7
 jmp(Y,'RET')                    #8
 nop()                           #9
 
-# uFSM opcode 'uLUP'
-# useful for implementing sys_Exec
-# - LUP byte at address sysArgs[1..0]
-# - increment sysArgs[0] skipping trampolines
-label('fsm-uLUP')
-adda(min(0,maxTicks-42))        #5
-blt('NEXT')                     #6
-ld(-8/2)                        #7
-ld([fsmState])                  #8
-adda(2)                         #9
-st([fsmState])                  #10
-ld([sysArgs+0])                 #11 wrap at 251
-suba(251)                       #12
-ld([sysArgs+1],Y)               #13
-bne('.fsm-lup#6')               #14
-ld(-10/2)                       #15-10=5
-ld(0)                           #16
-st([sysArgs+0])                 #17
-ld([sysArgs+1])                 #18
-adda(1)                         #19
-st([sysArgs+1],Y)               #20
-ld(-16/2)                       #21-16=5
-label('.fsm-lup#6')
-adda([vTicks])                  #6
-st([vTicks])                    #7
-ld([sysArgs+0])                 #8  increment byte pointer
-adda(1)                         #9
-st([sysArgs+0])                 #10 jump to trampoline
-jmp(Y,251)                      #11 
-suba(1)                         #12 return to lupReturn#19
-
-# uFSM opcode 'uMSKCHNL'
-# useful for implementing loaders
-# - clear channel mask if the gt1 segment
-#   overwrites a channel variable.
-label('fsm-uMSKCHNL')
-ld([fsmState])                  #5
-adda(2)                         #6
-st([fsmState])                  #7
-ld([sysArgs+3])                 #8
-suba(1)                         #9
-anda(0xfc)                      #10
-st([vTmp])                      #11
-ld([sysArgs+2])                 #12
-adda([sysArgs+4])               #13
-adda(1)                         #14
-anda(0xfe)                      #15
-ora([vTmp])                     #16
-beq(pc()+3)                     #17
-bra(pc()+3)                     #18
-ld(0xff)                        #19
-ld(0xfc)                        #19
-anda([channelMask])             #20
-st([channelMask])               #21
+# uFSM opcode 'uMSK'
+# - clear channelMask if segment [sysArgs[23],sysArgs[23]+sysArgs[4])
+#   overlaps OSCL/OSCH for audio channels 1, 2, 3.
+label('fsm-uMSK')
+ld([sysArgs+3])                 #5
+suba(1)                         #6
+anda(0xfc)                      #7
+st([vTmp])                      #8
+ld([sysArgs+2])                 #9
+adda([sysArgs+4])               #10
+adda(1)                         #11
+anda(0xfe)                      #12
+ora([vTmp])                     #13
+beq(pc()+3)                     #14
+bra(pc()+3)                     #15
+ld(0xff)                        #16
+ld(0xfc)                        #16
+anda([channelMask])             #17
+st([channelMask])               #18
+label('fsm-next#19')
+ld([fsmState])                  #19
+adda(2)                         #20
+st([fsmState])                  #21
 bra('NEXT')                     #22
 ld(-24/2)                       #23
 
-# uFSM opcode 'uDAT'
-# useful for implementing loaders
-# - store vAC into [sysArgs[3..2]]
-# - increment sysArgs[2]
-# - decrement sysArgs[4], copy in vACL/vACH
-label('fsm-uDAT')
-ld([fsmState])                  #5
-adda(2)                         #6
-st([fsmState])                  #7
-ld([vAC])                       #8
-ld([sysArgs+3],Y)               #9
-ld([sysArgs+2],X)               #10
-st([Y,X])                       #11
-ld([sysArgs+2])                 #12
-adda(1)                         #13
-st([sysArgs+2])                 #14
-ld([sysArgs+4])                 #15
-suba(1)                         #16
-st([sysArgs+4])                 #17
-st([vAC])                       #18 for BNE!
-st([vAC+1])                     #19 for BNE!
-bra('NEXT')                     #20
-ld(-22/2)                       #21
-
+# uFSM opcode 'uSTX'
+# - store vACL at address sysArgs[3:2]
+# - increment address sysArgs[2]
+# - decrement byte counter sysArgs[4] with copy in vAC
+label('fsm-uSTX')
+ld([vAC])                       #5
+ld([sysArgs+3],Y)               #6
+ld([sysArgs+2],X)               #7
+st([Y,X])                       #8
+ld([sysArgs+2])                 #9
+adda(1)                         #10
+st([sysArgs+2])                 #11
+ld([sysArgs+4])                 #12
+suba(1)                         #13
+st([sysArgs+4])                 #14
+st([vAC])                       #15
+ld(0)                           #16
+bra('fsm-next#19')              #17
+st([vAC+1])                     #18
 
 #-----------------------------------------------------------------------
-# SYS_Exec_80 implementation 
+# SYS_Exec_80 implementation
 
+
+# uFSM opcode 'uLUP'
+# - LUP byte at address sysArgs[1:0]
+# - increment sysArgs[0] skipping trampolines
+label('fsm-uLUP')
+ld([fsmState])                  #5
+adda(2)                         #6
+st([sysArgs+6])                 #7 save pc
+ld('fsm-lup#3')                 #8 next fragment
+st([fsmState])                  #9
+ld([sysArgs+1],Y)               #10 jump to trampoline
+jmp(Y,251)                      #11
+ld([sysArgs+0])                 #12 continue to lupReturn#19
+
+label('fsm-lup#3')
+ld([sysArgs+6])                 #3
+st([fsmState])                  #4 restore pc
+ld([sysArgs+0])                 #5
+suba(250)                       #6
+bne('fsm-lup#9')                #7
+st([sysArgs+0])                 #8 wrap at 251
+ld([sysArgs+1])                 #9
+adda(1)                         #10
+st([sysArgs+1])                 #11
+label('fsm-lup#12')
+bra('NEXT')                     #12
+ld(-14/2)                       #13
+label('fsm-lup#9')
+adda(251)                       #9
+bra('fsm-lup#12')               #10
+st([sysArgs+0])                 #11
+
+# Exec microprogram
 label('syse-prog')
 fsmAsm('uLUP')
 fsmAsm('uST', sysArgs+3)
-label('syse-chunk')
+label('syse-packet')
 fsmAsm('uLUP')
 fsmAsm('uST', sysArgs+2)
 fsmAsm('uLUP')
 fsmAsm('uST', sysArgs+4)
-fsmAsm('uMSKCHNL')
+fsmAsm('uMSK')
 label('syse-data')
 fsmAsm('uLUP')
-fsmAsm('uDAT')
+fsmAsm('uSTX')
 fsmAsm('uBNE', 'syse-data')
 fsmAsm('uLUP')
 fsmAsm('uST', sysArgs+3)
-fsmAsm('uBNE', 'syse-chunk')
+fsmAsm('uBNE', 'syse-packet')
 fsmAsm('uLDW', vLR)
 fsmAsm('uBNE', 'syse-ret')
 fsmAsm('uLUP')
@@ -6256,6 +6302,96 @@ st([vCpuSelect])                #21
 bra('NEXT')                     #22
 ld(-24/2)                       #23
 
+#-----------------------------------------------------------------------
+# SYS_Loader_DEVROM_44 implementation
+
+
+# uFSM opcode 'uSRIN', SeRialIN
+# - wait until videoY==sysArgs0 and save IN into vAC
+# - increment sysArgs0 to the next payload scanline
+label('fsm-uSRIN')
+ld([videoY])                    #5
+xora([sysArgs+0])               #6
+st([vAC+1])                     #7 zero eventually
+bne('NEXT')                     #8 restart until videoY==sysArgs0
+ld(-10/2)                       #9
+ld([fsmState])                  #10 increment fsmState
+adda(2)                         #11
+st([fsmState])                  #12
+ld([sysArgs+0])                 #13 next position
+anda(1)                         #14 - even or odd?
+bne('sys-srin#17')              #15
+ld([sysArgs+0])                 #16
+adda(4)                         #17 even
+xora(242)                       #18
+beq(pc()+3)                     #19
+bra(pc()+3)                     #20
+xora(242)                       #21
+ld(185)                         #21
+bra('sys-srin#24')              #22
+st([sysArgs+0])                 #23
+label('sys-srin#17')
+anda(0xf)                       #17 odd magic
+adda([sysArgs+0])               #18
+xora(4)                         #19
+bpl(pc()+3)                     #20
+bra(pc()+2)                     #21
+ora(11)                         #22
+st([sysArgs+0])                 #23,22
+label('sys-srin#24')
+nop()                           #24
+st(IN,[vAC])                    #25 finally read byte
+bra('NEXT')                     #26
+ld(-28/2)                       #27
+
+# uFSM opcode 'uCHKL'
+# - test whether loader chunk length exceeds 60
+label('fsm-uCHKL')
+ld(0)                           #5
+st([vAC+1])                     #6
+ld([sysArgs+4])                 #7
+adda(67)                        #8
+bra('fsm-ldw#11')               #9
+anda(0x80,X)                    #10
+
+# Loader microprogram
+label('sysl-packet')
+fsmAsm('uSRIN')
+fsmAsm('uST', sysArgs+2)        # addrl
+fsmAsm('uSRIN')
+fsmAsm('uST', sysArgs+3)        # addrh
+fsmAsm('uMSK')
+fsmAsm('uCHKL')                 # sanity check
+fsmAsm('uBNE', 'sysl-prog')     # invalid packet
+label('sysl-data')
+fsmAsm('uSRIN')
+fsmAsm('uSTX')
+fsmAsm('uBNE', 'sysl-data')
+label('sysl-prog')
+label('sysl-frame')
+fsmAsm('uLDI', 207)
+fsmAsm('uST', sysArgs+0)
+fsmAsm('uSRIN')
+fsmAsm('uXORI', ord('L'))
+fsmAsm('uBNE', 'sysl-prog')     # invalid packet
+fsmAsm('uSRIN')
+fsmAsm('uANDI', 0x3f)           # six valid bits only
+fsmAsm('uST', sysArgs+4)        # len
+fsmAsm('uBNE', 'sysl-packet')
+fsmAsm('uSRIN')
+fsmAsm('uST', vLR)              # execl
+fsmAsm('uSRIN')
+fsmAsm('uST', vLR+1)            # exech
+label('sysl-ret')
+fsmAsm('uRET')                  # return
+
+label('sys_Loader')
+ld('sysl-prog')                 #18
+st([fsmState])                  #19
+ld((pc()>>8)-1)                 #20
+st([vCpuSelect])                #21
+bra('NEXT')                     #22
+ld(-24/2)                       #23
 
 #-----------------------------------------------------------------------
 #
