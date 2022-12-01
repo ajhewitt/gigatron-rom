@@ -1,0 +1,43 @@
+
+{-----------------------------------------------------------------------+
+|                                                                       |
+|       Loading of programs over the serial port (with Arduino)         |
+|                                                                       |
++-----------------------------------------------------------------------}
+gcl0x
+
+{ Setup }
+
+{ Print ASCII character (32..127) on screen using the 5x8 pixel built-in font }
+[def
+  82-                           {Map ASCII code to offset in font table}
+  [if<0 50+ i= \font32up        {First page for ASCII 32..81}
+   else     i= \font82up] j=    {Second page is ASCII 82..127}
+  i 2<< i+                      {Multiply by 5}
+  j+ j=                         {Add page address to reach bitmap data}
+  Pos \sysArgs4:                {Position of character}
+  6+ Pos=                       {Advance position by 6 pixels for next call}
+  5 [do i=                      {Loop to draw 5 vertical slices of 8 pixels}
+    j 0? \sysArgs2.             {Get byte from ROM using `LUP 0' instruction}
+    134!!                       {Invoke SYS function to draw 8 vertical pixels}
+    <j++ <\sysArgs4++           {Advance to next slice in ROM and on screen}
+    i 1- if>0loop]              {Looping}
+  \sysArgs2. 134!!              {Render 6th slice}
+  ret
+] PrintChar=
+
+{ Display ready to load text }
+\SYS_VDrawBits_134 _sysFn=      {Prepare SYS calls}
+$0f20 _sysArgs0=                {Yellow on blue}
+$5006 Pos=                      {Overwrite the text that MainMenu left behind}
+[def ``Ready`to`load #0] Text=
+[do Text, if<>0 Text<++ PrintChar! loop]
+
+{-----------------------------------------------------------------------+
+|                       Using SYS_Loader                                |
++-----------------------------------------------------------------------}
+
+$b0   \sysFn:                   {SYS_Loader}
+$590c \sysArgs0:                {Feedback row on screen, eventually}
+44!!
+

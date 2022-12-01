@@ -38,8 +38,7 @@ dev.rom: Core/* Apps/*/* Makefile interface.json
 		zippedRacerHorizon=Apps/Racer/Horizon-256x16.rgb\
 		SYS_Racer_v1.py\
 		Racer=Apps/Racer/Racer_v3.gcl\
-		SYS_Loader_vX.py\
-		Loader=Apps/Loader/Loader_v4.gcl\
+		Loader=Apps/Loader/Loader.gcl\
 		Mandelbrot=Apps/Mandelbrot/Mandelbrot_v2.gt1\
 		Bricks=Apps/Bricks/Bricks_v2.gt1\
 		Invader=Apps/Invader/Invader_v1.gt1\
