@@ -6111,7 +6111,7 @@ if WITH_512K_BOARD:
 
 #-----------------------------------------------------------------------
 #
-#  $1400 ROM page 20: SYS calls (with FSM)
+#  $1400 ROM page 20: Multiply Divide
 #
 #-----------------------------------------------------------------------
 
@@ -6236,7 +6236,8 @@ ld(-16//2)                      #14
 
 
 #-----------------------------------------------------------------------
-# x:args0:1 y:args2:3 rem:args4:5 mask:args6:7
+# sys_Divide_u16
+# x:args0:1 y:args2:3 rem:args4:5 counter:args6
 #
 # Original implementation by at67.
 # Reworked to handle unrestricted unsigned divisions
@@ -6372,8 +6373,48 @@ ld(-14//2)                      #11
 
 
 #-----------------------------------------------------------------------
+# Opcodes
+
+label('fsm14op1#21')
+ld(1)                           #21
+adda([vPC])                     #22
+st([vPC])                       #23
+ld(hi('FSM14_ENTER'))           #24
+st([vCpuSelect])                #25
+bra('NEXT')                     #26
+ld(-28/2)                       #27
+
+# MULW implementation
+label('mulw#3a')
+ld([vAC])                       #3
+st([sysArgs+2])                 #4
+ld([vAC+1])                     #5
+st([sysArgs+3])                 #6
+ld([sysArgs+6])                 #7
+adda(1,X)                       #8
+ld([X])                         #9
+st([sysArgs+1])                 #10
+ld([sysArgs+6],X)               #11
+ld([X])                         #12
+st([sysArgs+0])                 #13
+ld(0)                           #14
+st([sysArgs+4])                 #15
+st([sysArgs+5])                 #16
+ld(1)                           #17
+st([sysArgs+6])                 #18
+nop()                           #19
+ld('sysm#3a')                   #20
+st([fsmState])                  #21
+ld((pc()>>8)-1)                 #22
+st([vCpuSelect])                #23
+bra('NEXT')                     #24
+ld(-26/2)                       #25
+
+
+
+#-----------------------------------------------------------------------
 #
-#  $1500 ROM page 21: SYS_Exec (FSM)
+#  $1500 ROM page 21: SYS_Exec & SYS_Loader
 #
 #-----------------------------------------------------------------------
 
@@ -6774,9 +6815,25 @@ label('PREFIX35_PAGE')
 def oplabel(name):
   define(name, 0x3500 | (pc() & 0xff))
 
+# Jump into FSM14
+label('fsm14op1#16')
+st([fsmState])                  #16
+ld([Y,X])                       #17
+ld(hi('fsm14op1#21'),Y)         #18
+jmp(Y,'fsm14op1#21')            #19
+st([sysArgs+6])                 #20
+
 # Instruction slots
 
-fillers(until=0x3f)
+fillers(until=0x3d)
+
+# Instruction MULW (35 3d xx)
+# - Multiply vAC by var [xx]
+# - Trashes sysArgs[0..7]
+# - Total time: 4 to 6 scanlines
+oplabel('MULW_v7')
+bra('fsm14op1#16')              #14
+ld('mulw#3a')                   #15
 
 # Instruction BEQ (35 3f xx) [26 cycles]
 # - Branch if zero (if(vACL==0)vPCL=xx)
@@ -6871,10 +6928,12 @@ fillers(until=0xff)
 #-----------------------------------------------------------------------
 
 fillers(until=0xff)
+label('FSM17_ENTER')
 bra(pc()+4)                     #0 ENTER
 align(0x100, size=0x100)
 bra([fsmState])                 #1
 assert (pc() & 255) == (symbol('NEXT') & 255)
+label('FSM17_NEXT')
 adda([vTicks])                  #0 NEXT
 bge([fsmState])                 #1
 st([vTicks])                    #2
