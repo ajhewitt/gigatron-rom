@@ -5811,90 +5811,103 @@ ld(0)                           #8
 # sys_Multiply_s16, sum:s16 = x:s16 * y:s16
 # x:args0:1 y:args2:3 sum:args4:5 mask:args6:7
 #
-# Original implementation by at67 reshuffled for fsm.
-
-# Mask is in vAC instead of sysArgs67
-# because sysArgs7 is now fsmState.
-
+# Original implementation by at67.
+# Reworked with two loops to better leverage fsm.
 
 label('sys_Multiply_s16')
-ld('.sysm16#3a')                #18
+ld('sysm#3a')                   #18
 st([fsmState])                  #19
 ld((pc()>>8)-1)                 #20
 st([vCpuSelect])                #21
-ld(0)                           #22
-st([vAC+1])                     #23
-ld(1)                           #24
-st([vAC])                       #25
-bra('NEXT')                     #26
-ld(-28/2)                       #27
+ld(1)                           #22
+st([sysArgs+6])                 #23
+bra('NEXT')                     #24
+ld(-26/2)                       #25
 
-label('.sysm16#3a')
-ld('.sysm16#3b')                #3
+label('sysm#3a')
+ld('sysm#3b')                   #3
 st([fsmState])                  #4
-ld([vAC])                       #5 load mask.lo
+ld([sysArgs+6])                 #5
 anda([sysArgs+2])               #6
-st([vTmp])                      #7 AC.lo = mask.lo AND y.lo
-ld([vAC+1])                     #8 load mask.hio
-anda([sysArgs+3])               #9
-ora([vTmp])                     #10 AC.hi = mask.hi AND y.hi
-nop()                           #11
-beq('NEXT')                     #12
-ld(-14/2)                       #13
-ld([sysArgs+4])                 #14 load sum.lo
-adda([sysArgs+0])               #15 load x.lo
-st([sysArgs+4])                 #16 sum.lo = sum.lo + x.lo
-bmi(pc()+4)                     #17 check for carry
-suba([sysArgs+0])               #18 get original sum.lo back
-bra(pc()+4)                     #19
-ora([sysArgs+0])                #20 carry in bit 7
-nop()                           #19
-anda([sysArgs+0])               #20 carry in bit 7
-anda(0x80,X)                    #21
-ld([X])                         #22
-adda([sysArgs+5])               #23
-adda([sysArgs+1])               #24
-st([sysArgs+5])                 #25 sum.hi = sum.hi + x.hi
-bra('NEXT')                     #26
-ld(-28/2)                       #27
+nop()                           #7
+beq('NEXT')                     #8
+ld(-10/2)                       #9
+ld([sysArgs+4])                 #10 load sum.lo
+adda([sysArgs+0])               #11 load x.lo
+st([sysArgs+4])                 #12 sum.lo = sum.lo + x.lo
+bmi(pc()+4)                     #13 check for carry
+suba([sysArgs+0])               #14 get original sum.lo back
+bra(pc()+4)                     #15
+ora([sysArgs+0])                #16 carry in bit 7
+nop()                           #15
+anda([sysArgs+0])               #16 carry in bit 7
+anda(0x80,X)                    #17
+ld([X])                         #18
+adda([sysArgs+5])               #19
+adda([sysArgs+1])               #20
+st([sysArgs+5])                 #21 sum.hi = sum.hi + x.hi
+bra('NEXT')                     #22
+ld(-24/2)                       #23
 
-label('.sysm16#3b')
-ld('.sysm16#3a')                #3
-st([fsmState])                  #4
-ld([sysArgs+0])                 #5  AC = x.lo
-anda(0x80,X)                    #6  X = AC & 0x80
-adda([sysArgs+0])               #7  AC = x.lo <<1
-st([sysArgs+0])                 #8  x.lo = AC
-ld([X])                         #9  AC = X >>7
-adda([sysArgs+1])               #10
-adda([sysArgs+1])               #11
-st([sysArgs+1])                 #12 x.hi = x.hi <<1 + AC
-ld([vAC])                       #13 AC = mask.lo
-anda(0x80,X)                    #14 X = AC & 0x80
-adda([vAC])                     #15 AC = mask.lo <<1
-st([vAC])                       #16 mask.lo = AC
-ld([X])                         #17 AC = X >>7
-adda([vAC+1])                   #18
-adda([vAC+1])                   #19
-st([vAC+1])                     #20 mask.hi = mask.hi <<1 + AC
-ora([vAC])                      #21
-bne('NEXT')                     #22
-ld(-24//2)                      #23
-ld('.sysm16#3c')                #24
-st([fsmState])                  #25
-bra('NEXT')                     #26
-ld(-28//2)                      #27
+label('sysm#3b')
+ld([sysArgs+0])                 #3  AC = x.lo
+anda(0x80,X)                    #4  X = AC & 0x80
+adda(AC)                        #5  AC = x.lo <<1
+st([sysArgs+0])                 #6  x.lo = AC
+ld([X])                         #7  AC = X >>7
+adda([sysArgs+1])               #8
+adda([sysArgs+1])               #9
+st([sysArgs+1])                 #10 x.hi = x.hi <<1 + AC
+ld([sysArgs+6])                 #11
+adda([sysArgs+6])               #12
+beq('sysm#15b')                 #13
+st([sysArgs+6])                 #14
+ld('sysm#3a')                   #15
+st([fsmState])                  #16
+nop()
+bra('NEXT')                     #17
+ld(-20/2)                       #18
+label('sysm#15b')
+ld([sysArgs+3])                 #15
+beq(pc()+3)                     #16
+bra(pc()+2)                     #17
+ld(1)                           #18
+st([sysArgs+6])                 #19,18
+ld('sysm#3c')                   #20
+st([fsmState])                  #21
+bra('NEXT')                     #22
+ld(-24/2)                       #23
 
-label('.sysm16#3c')
-ld([sysArgs+4])                 #3 copy result in AC
-st([vAC])                       #4
-ld([sysArgs+5])                 #5
-st([vAC+1])                     #6
-ld(hi('ENTER'))                 #7 exit fsm
-st([vCpuSelect])                #8
-ld(hi('REENTER'),Y)             #9
-jmp(Y,'REENTER')                #10
-ld(-14//2)                      #11
+label('sysm#3c')
+ld([sysArgs+6])                 #3
+beq('sysm#6c')                  #4
+anda([sysArgs+3])               #5
+beq('sysm#8c')                  #6
+ld([sysArgs+1])                 #7 add
+adda([sysArgs+5])               #8
+st([sysArgs+5])                 #9
+label('sysm#10c')
+ld([sysArgs+1])                 #10
+adda(AC)                        #11
+st([sysArgs+1])                 #12
+ld([sysArgs+6])                 #13
+adda(AC)                        #14
+st([sysArgs+6])                 #15
+bra('NEXT')                     #16
+ld(-18/2)                       #17
+label('sysm#8c')
+bra('sysm#10c')                 #8  no add
+nop()                           #9
+label('sysm#6c')
+ld([sysArgs+4])                 #6  exit
+st([vAC])                       #7
+ld([sysArgs+5])                 #8
+st([vAC+1])                     #9
+ld(hi('ENTER'))                 #10 
+st([vCpuSelect])                #11
+ld(hi('NEXTY'),Y)               #12
+jmp(Y,'NEXTY')                  #13
+ld(-16//2)                      #14
 
 
 #-----------------------------------------------------------------------
@@ -6202,7 +6215,7 @@ ld(-24/2)                       #23
 
 #-----------------------------------------------------------------------
 #
-#  end of core
+#  End of Core
 #
 #-----------------------------------------------------------------------
 
