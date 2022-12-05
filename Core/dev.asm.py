@@ -845,13 +845,13 @@ ld(-20/2)                       #17
 #  [<addrH> <addrL> <n&255> n*<byte>]* 0 [<execH> <execL>]
 # on top of lookup tables.
 #
-# Variables:
 #       sysArgs[0:1]    ROM pointer (in)
 #       sysArgs[2:3]    RAM pointer (changed) Execution address (out)
 #       sysArgs[4]      Byte counter (changed)
 #       sysArgs[7]      FSM state (changed)
 #       vLR==0          vCPU continues at GT1 execution address (in)
 #       vLR!=0          vCPU continues at vLR (in)
+
 label('SYS_Exec_88')
 ld(hi('sys_Exec'),Y)            #15
 jmp(Y,'sys_Exec')               #16
@@ -862,9 +862,15 @@ nop()                           #17
 #-----------------------------------------------------------------------
 #
 # This loads vCPU code and data presented on the serial port according
-# to the loader protocol, then jumps to the avertised execution
-# address. This call takes no argument and never returns.
-# It loops until receiving an acceptable payload.
+# to the loader protocol then jumps to the avertised execution
+# address. This call never returns.
+#
+# Set sysArgs[0] to 0xc to updated green or red dots in the
+# screen row located in page sysArgs[1]. This is automatically
+# disabled if visible bytes are loaded there.
+#
+#       sysArgs[0]      Zero to disable echo (0x00 or ox0c) (in)
+#       sysArgs[1]      Echo row (0x59) (in)
 #
 # Credits: The first native loader was written for ROMvX0 by at67.
 #
@@ -888,7 +894,7 @@ nop()                           #17
 
 ld(hi('sys_Loader'),Y)          #15 slot 0xb0
 jmp(Y,'sys_Loader')             #16
-nop()                           #17
+ld([sysArgs+0])                 #17
 
 #-----------------------------------------------------------------------
 # More placeholders for future SYS functions
@@ -6306,22 +6312,32 @@ ld(-24/2)                       #23
 # SYS_Loader_DEVROM_44 implementation
 
 
+# uFSM opcode 'uFAR'
+# - jump to another page
+label('fsm-uFAR')
+st([vTmp])                      #5
+ld([fsmState])                  #6
+adda(2)                         #7
+ld(hi('fsm-far-page'),Y)        #8
+jmp(Y,[vTmp])                   #9
+st([fsmState])                  #10
+
 # uFSM opcode 'uSRIN', SeRialIN
 # - wait until videoY==sysArgs0 and save IN into vAC
 # - increment sysArgs0 to the next payload scanline
 label('fsm-uSRIN')
-ld([videoY])                    #5
-xora([sysArgs+0])               #6
+ld([sysArgs+6])                 #5
+xora([videoY])                  #6
 st([vAC+1])                     #7 zero eventually
 bne('NEXT')                     #8 restart until videoY==sysArgs0
 ld(-10/2)                       #9
 ld([fsmState])                  #10 increment fsmState
 adda(2)                         #11
 st([fsmState])                  #12
-ld([sysArgs+0])                 #13 next position
+ld([sysArgs+6])                 #13 next position
 anda(1)                         #14 - even or odd?
-bne('sys-srin#17')              #15
-ld([sysArgs+0])                 #16
+bne('sys-srin#17')              #15 
+ld([sysArgs+6])                 #16
 adda(4)                         #17 even
 xora(242)                       #18
 beq(pc()+3)                     #19
@@ -6329,48 +6345,28 @@ bra(pc()+3)                     #20
 xora(242)                       #21
 ld(185)                         #21
 bra('sys-srin#24')              #22
-st([sysArgs+0])                 #23
+st([sysArgs+6])                 #23
 label('sys-srin#17')
 anda(0xf)                       #17 odd magic
-adda([sysArgs+0])               #18
+adda([sysArgs+6])               #18
 xora(4)                         #19
 bpl(pc()+3)                     #20
 bra(pc()+2)                     #21
 ora(11)                         #22
-st([sysArgs+0])                 #23,22
+st([sysArgs+6])                 #23,22
 label('sys-srin#24')
 nop()                           #24
 st(IN,[vAC])                    #25 finally read byte
 bra('NEXT')                     #26
 ld(-28/2)                       #27
 
-# uFSM opcode 'uCHKL'
-# - test whether loader chunk length exceeds 60
-label('fsm-uCHKL')
-ld(0)                           #5
-st([vAC+1])                     #6
-ld([sysArgs+4])                 #7
-adda(67)                        #8
-bra('fsm-ldw#11')               #9
-anda(0x80,X)                    #10
-
 # Loader microprogram
-label('sysl-packet')
-fsmAsm('uSRIN')
-fsmAsm('uST', sysArgs+2)        # addrl
-fsmAsm('uSRIN')
-fsmAsm('uST', sysArgs+3)        # addrh
-fsmAsm('uMSK')
-fsmAsm('uCHKL')                 # sanity check
-fsmAsm('uBNE', 'sysl-prog')     # invalid packet
-label('sysl-data')
-fsmAsm('uSRIN')
-fsmAsm('uSTX')
-fsmAsm('uBNE', 'sysl-data')
 label('sysl-prog')
+fsmAsm('uLDI', 0x15)            # echo color gray
 label('sysl-frame')
+fsmAsm('uFAR', 'sysl-echo#11')  # display dot
 fsmAsm('uLDI', 207)
-fsmAsm('uST', sysArgs+0)
+fsmAsm('uST', sysArgs+6)        # reset serial index
 fsmAsm('uSRIN')
 fsmAsm('uXORI', ord('L'))
 fsmAsm('uBNE', 'sysl-prog')     # invalid packet
@@ -6384,14 +6380,97 @@ fsmAsm('uSRIN')
 fsmAsm('uST', vLR+1)            # exech
 label('sysl-ret')
 fsmAsm('uRET')                  # return
+label('sysl-packet')
+fsmAsm('uSRIN')
+fsmAsm('uST', sysArgs+2)        # addrl
+fsmAsm('uSRIN')
+fsmAsm('uST', sysArgs+3)        # addrh
+fsmAsm('uMSK')
+fsmAsm('uFAR', 'sysl-chk#11')   # checks
+fsmAsm('uBNE', 'sysl-prog')     # invalid packet
+label('sysl-data')
+fsmAsm('uSRIN')
+fsmAsm('uSTX')
+fsmAsm('uBNE', 'sysl-data')
+fsmAsm('uST', sysArgs+5)        # clear error flag
+fsmAsm('uLDI', 0xc)             # next dot color
+fsmAsm('uBNE', 'sysl-frame')
+
+#-----------------------------------------------------------------------
+#
+#   $1600 ROM page 22: Misc overflow
+#
+#-----------------------------------------------------------------------
+
+align(0x100, size=0x100)
+
+#-----------------------------------------------------------------------
+# Loader
+#-----------------------------------------------------------------------
+
+label('fsm-far-page')
 
 label('sys_Loader')
-ld('sysl-prog')                 #18
-st([fsmState])                  #19
-ld((pc()>>8)-1)                 #20
-st([vCpuSelect])                #21
-bra('NEXT')                     #22
-ld(-24/2)                       #23
+suba(12)                        #18
+bge(pc()+3)                     #19
+bra(pc()+3)                     #20
+ld(0)                           #21
+ld([sysArgs+0])                 #21
+st([sysArgs+0])                 #22
+ld('sysl-prog')                 #23
+st([fsmState])                  #24
+ld(hi('FSM15_ENTER'))           #25
+st([vCpuSelect])                #26
+adda(1,Y)                       #27
+jmp(Y,'NEXT')                   #28
+ld(-30/2)                       #29
+
+label('sysl-echo#11')
+ld([sysArgs+0])                 #11
+bne('sysl-echo#14')             #12
+ld(hi('sysl-prog'),Y)           #13
+jmp(Y,'NEXT')                   #14
+ld(-16/2)                       #15
+label('sysl-echo#14')
+ld(AC,X)                        #14
+suba(11)                        #15
+anda(127)                       #16
+adda(12)                        #17
+st([sysArgs+0])                 #18
+ld([sysArgs+1],Y)               #19
+ld([vAC])                       #20
+st([Y,X])                       #21
+ld([sysArgs+0],X)               #22
+ld(0x3f)                        #23
+st([Y,X])                       #24
+ld(hi('sysl-prog'),Y)           #25
+jmp(Y,'NEXT')                   #26
+ld(-28/2)                       #27
+
+label('sysl-chk#11')
+ld([sysArgs+4])                 #11 len>60?
+adda(67)                        #12
+anda(0x80)                      #13
+st([vAC])                       #14
+st([vAC+1])                     #15
+ld([sysArgs+2])                 #16 writing echo area?
+suba(0x20)                      #17
+anda([sysArgs+2])               #18
+anda(0x80,X)                    #19 X=0 [no] X=0x80 [maybe]
+ld([sysArgs+3])                 #20
+xora([sysArgs+1])               #21
+ora([X])                        #22
+beq('sysl-chk#25')              #23
+ld(hi('sysl-prog'),Y)           #24
+nop()                           #25
+jmp(Y,'NEXT')                   #26
+ld(-28/2)                       #27
+label('sysl-chk#25')
+st([sysArgs+0])                 #25
+jmp(Y,'NEXT')                   #26
+ld(-28/2)                       #27
+
+
 
 #-----------------------------------------------------------------------
 #
