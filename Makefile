@@ -31,28 +31,28 @@ CFLAGS:=-std=c11 -O3 -Wall
 #	Development
 #-----------------------------------------------------------------------
 
-# Development towards "ROM v5"
+# Development towards "ROM v7"
 dev.rom: Core/* Apps/*/* Makefile interface.json
 	python3 Core/dev.asm.py\
 		Snake=Apps/Snake/Snake_v3.gcl\
 		SYS_Racer_v1.py\
 		zippedRacerHorizon=Apps/Racer/Horizon-256x16.rgb\
-		Racer=Apps/Racer/Racer.gcl\
-		Mandelbrot=Apps/Mandelbrot/Mandelbrot.gcl\
+		Racer=Apps/Racer/Racer_v3.gcl\
+		Mandelbrot=Apps/Mandelbrot/Mandelbrot_v2.gt1\
 		SYS_Loader_vX.py\
 		Loader=Apps/Loader/Loader_v4.gcl\
 		Bricks=Apps/Bricks/Bricks_v2.gt1\
-		Invader=Apps/Invader/Invader.gt1\
-		TinyBASIC=Apps/TinyBASIC/TinyBASIC.gcl\
+		Invader=Apps/Invader/Invader_v1.gt1\
+		TinyBASIC=Apps/TinyBASIC/TinyBASIC_v6.gcl\
 		TicTac=Apps/TicTac/LoadTicTac_v1.gcl\
 		TicTacGtb=Apps/TicTac/TicTac_v2.gtb\
 		WozMon=Apps/WozMon/WozMon_v2.gcl\
-		Apple1=Apps/Apple-1/Apple-1.gt1\
+		Apple1=Apps/Apple-1/Apple-1_v3.gt1\
 		MSBASIC=Apps/MSBASIC/MSBASIC_v1.gt1\
-		Credits=Apps/Credits/Credits.gt1\
-		Egg=Apps/Horizon/Horizon_c.gt1\
-		Boot=Apps/CardBoot/CardBoot.gt1\
-		Main=Apps/MainMenu/MainMenu.gcl\
+		Credits=Apps/Credits/Credits_v4.gt1\
+		Egg=Apps/Horizon/Horizon_c_v2.gt1\
+		Boot=Apps/CardBoot/CardBoot_v2.gt1\
+		Main=Apps/MainMenu/MainMenu_v6.gcl\
 		Reset=Core/Reset.gcl
 
 run: Docs/gtemu $(DEV)
@@ -96,6 +96,38 @@ burn85:
 #-----------------------------------------------------------------------
 #	Released ROM versions
 #-----------------------------------------------------------------------
+
+
+# ROM v6 support many things initially intended for ROMv5
+# - Support for RAM & IO extension (with additional SYS calls)
+# - Support for booting SD card attached to the RAM & IO extension
+# - Improved applications Mandelbrot, Racer
+# - New application Invaders replacing Pictures
+proposedROMv6.rom: Core/* Apps/*/* Makefile interface.json
+	python3 Core/proposedROMv6.asm.py\
+		Snake=Apps/Snake/Snake_v3.gcl\
+		SYS_Racer_v1.py\
+		zippedRacerHorizon=Apps/Racer/Horizon-256x16.rgb\
+		Racer=Apps/Racer/Racer_v3.gcl\
+		Mandelbrot=Apps/Mandelbrot/Mandelbrot_v2.gt1\
+		SYS_Loader_vX.py\
+		Loader=Apps/Loader/Loader_v4.gcl\
+		Bricks=Apps/Bricks/Bricks_v2.gt1\
+		Invader=Apps/Invader/Invader_v1.gt1\
+		TinyBASIC=Apps/TinyBASIC/TinyBASIC_v6.gcl\
+		TicTac=Apps/TicTac/LoadTicTac_v1.gcl\
+		TicTacGtb=Apps/TicTac/TicTac_v2.gtb\
+		WozMon=Apps/WozMon/WozMon_v2.gcl\
+		Apple1=Apps/Apple-1/Apple-1_v3.gt1\
+		MSBASIC=Apps/MSBASIC/MSBASIC_v1.gt1\
+		Credits=Apps/Credits/Credits_v4.gt1\
+		Egg=Apps/Horizon/Horizon_c_v2.gt1\
+		Boot=Apps/CardBoot/CardBoot_v2.gt1\
+		Main=Apps/MainMenu/MainMenu_v6.gcl\
+		Reset=Core/Reset_v6.gcl
+
+burnv6: ROMv6.rom
+	minipro -p 'AT27C1024 @DIP40' -w "$<" -y -s
 
 # Untested freeze of dev.rom
 ROMv5a.rom: Core/* Apps/*/* Makefile interface.json
