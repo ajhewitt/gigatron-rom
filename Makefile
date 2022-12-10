@@ -35,12 +35,12 @@ CFLAGS:=-std=c11 -O3 -Wall
 dev.rom: Core/* Apps/*/* Makefile interface.json
 	python3 Core/dev.asm.py\
 		Snake=Apps/Snake/Snake_v3.gcl\
-		SYS_Racer_v1.py\
 		zippedRacerHorizon=Apps/Racer/Horizon-256x16.rgb\
+		SYS_Racer_v1.py\
 		Racer=Apps/Racer/Racer_v3.gcl\
-		Mandelbrot=Apps/Mandelbrot/Mandelbrot_v2.gt1\
 		SYS_Loader_vX.py\
 		Loader=Apps/Loader/Loader_v4.gcl\
+		Mandelbrot=Apps/Mandelbrot/Mandelbrot_v2.gt1\
 		Bricks=Apps/Bricks/Bricks_v2.gt1\
 		Invader=Apps/Invader/Invader_v1.gt1\
 		TinyBASIC=Apps/TinyBASIC/TinyBASIC_v6.gcl\
@@ -52,7 +52,7 @@ dev.rom: Core/* Apps/*/* Makefile interface.json
 		Credits=Apps/Credits/Credits_v4.gt1\
 		Egg=Apps/Horizon/Horizon_c_v2.gt1\
 		Boot=Apps/CardBoot/CardBoot_v2.gt1\
-		Main=Apps/MainMenu/MainMenu_v6.gcl\
+		Main=Apps/MainMenu/MainMenu.gcl\
 		Reset=Core/Reset.gcl
 
 run: Docs/gtemu $(DEV)
