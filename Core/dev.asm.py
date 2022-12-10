@@ -6348,7 +6348,6 @@ for application in argv[1:]:
       raw = bytearray(f.read())
     insertRomDir(name)
     label(name)
-    raw = raw[:-2] # Drop start address
     if raw[0] == 0 and raw[1] + raw[2] > 0xc0:
       highlight('Warning: zero-page conflict with ROM loader (SYS_Exec_88)')
     program = gcl.Program(None)
@@ -6373,7 +6372,10 @@ for application in argv[1:]:
     zpReset(userVars)
     for line in open(application).readlines():
       program.line(line)
-    program.end()
+    # finish
+    program.end()            # 00
+    program.putInRomTable(2) # exech
+    program.putInRomTable(0) # execl
 
   # Application-specific SYS extensions
   elif application.endswith('.py'):
