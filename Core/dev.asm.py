@@ -778,14 +778,14 @@ ld(-20/2)                       #17
 #-----------------------------------------------------------------------
 #
 # Computes C = C + A * B where A,B,C are 16 bits integers.
-# Returns 16 bits result in vAC as well
+# Returns product in vAC as well
 #
 #       sysArgs[0:1]    Multiplicand A (in)
 #       sysArgs[2:3]    Multiplicand B (in)
 #       sysArgs[4:5]    C (inout)
 #       sysArgs[6:7]    (changed)
 #
-# Original implementation: at67
+# Original design: at67
 
 label('SYS_Multiply_s16_v6_66')
 label('SYS_Multiply_s16_DEVROM_34')
@@ -798,21 +798,23 @@ ld([sysArgs+6])                 #17 load mask.lo
 # Also known as SYS_Divide_s16_DEVROM_34
 #-----------------------------------------------------------------------
 #
-# Computes the Euclidean division of 0<=A<=32767 and 0<B<=32767.
-# An external wrapper is needed to handle signed division or
-# to handle unsigned division with full range.
+# Computes the Euclidean division of 0<=A<65536 and 0<B<65536.
+# An external wrapper is needed to handle signed division.
+# Returns product in vAC as well as sysArgs[01]
+# Returns remainder in sysArgs[45]
 #
 #       sysArgs[0:1]    Dividend A (in) Quotient (out)
 #       sysArgs[2:3]    Divisor B (in)
 #       sysArgs[4:5]    Remainder (out)
 #       sysArgs[6:7]    (changed)
 #
-# Original implementation: at67
+# Original design by at67.
+# Improved for unrestricted unsigned division
 
 label('SYS_Divide_s16_v6_80')
-label('SYS_Divide_s16_DEVROM_34')
-ld(hi('sys_Divide_s16'),Y)      #15 slot 0xa1
-jmp(Y,'sys_Divide_s16')         #16
+label('SYS_Divide_u16_DEVROM_34')
+ld(hi('sys_Divide_u16'),Y)      #15 slot 0xa1
+jmp(Y,'sys_Divide_u16')         #16
 ld([sysArgs+4])                 #17
 
 #-----------------------------------------------------------------------
@@ -5911,98 +5913,140 @@ ld(-16//2)                      #14
 
 
 #-----------------------------------------------------------------------
-# sys_Divide_s16, x:s16 = x:s16 / y:s16, rem:s16 = x:s16 % y:s16
 # x:args0:1 y:args2:3 rem:args4:5 mask:args6:7
 #
-# Original implementation by at67 reshuffled for fsm.
+# Original implementation by at67.
+# Reworked to handle unrestricted unsigned divisions
 
-label('sys_Divide_s16')
-ld('.sysd16#3a')                #18
+label('sys_Divide_u16')
+ld('sysd#3a')                   #18
 st([fsmState])                  #19
 ld((pc()>>8)-1)                 #20
 st([vCpuSelect])                #21
 ld(0)                           #22 init 
 st([sysArgs+4])                 #23
 st([sysArgs+5])                 #24
-st([sysArgs+6])                 #25
-bra('NEXT')                     #26
-ld(-28/2)                       #27
+ld(16)                          #25
+st([sysArgs+6])                 #26
+nop()                           #27
+bra('NEXT')                     #28
+ld(-30/2)                       #29
 
-label('.sysd16#3a')
-ld('.sysd16#3b')                #3
+label('sysd#3a')
+ld('sysd#3b')                   #3 
 st([fsmState])                  #4
-ld([sysArgs+4])                 #5 lsl sysArgs5<4<1<0
-anda(0x80,X)                    #6  
-adda([sysArgs+4])               #7
-st([sysArgs+4])                 #8
-ld([sysArgs+5])                 #9
-adda([sysArgs+5])               #10
-adda([X])                       #11
-st([sysArgs+5])                 #12
-ld([sysArgs+1])                 #13
-anda(0x80,X)                    #14
-ld([sysArgs+4])                 #15
-ora([X])                        #16
-st([sysArgs+4])                 #17
-ld([sysArgs+0])                 #18
-anda(0x80,X)                    #19
-adda([sysArgs+0])               #20
-st([sysArgs+0])                 #21
-ld([sysArgs+1])                 #22
-adda([sysArgs+1])               #23
-adda([X])                       #24
-st([sysArgs+1])                 #25
-bra('NEXT')                     #26
-ld(-28/2)                       #27
+ld([sysArgs+0])                 #5  lsl sysArgs5<4<1<0
+anda(0x80,X)                    #6
+adda(AC)                        #7
+st([sysArgs+0])                 #8
+ld([sysArgs+1])                 #9
+bmi('sysd#12a')                 #10
+adda(AC)                        #11
+adda([X])                       #12
+st([sysArgs+1])                 #13
+ld([sysArgs+4])                 #14
+anda(0x80,X)                    #15 
+bra('sysd#18a')                 #16
+adda(AC)                        #17
+label('sysd#12a')
+adda([X])                       #12
+st([sysArgs+1])                 #13
+ld([sysArgs+4])                 #14
+anda(0x80,X)                    #15 
+adda(AC)                        #16
+adda(1)                         #17
+label('sysd#18a')
+st([sysArgs+4])                 #18
+ld([sysArgs+5])                 #19
+adda(AC)                        #20
+adda([X])                       #21
+st([sysArgs+5])                 #22
+nop()                           #23
+bra('NEXT')                     #24
+ld(-26/2)                       #25
 
-label('.sysd16#3b')
-ld('.sysd16#3c')                #3
-st([fsmState])                  #4
-ld([sysArgs+4])                 #5 vAC=sysArgs[45]-sysArgs[23]
-bmi(pc()+5)                     #6
-suba([sysArgs+2])               #7
-st([vAC])                       #8
-bra(pc()+5)                     #9
-ora([sysArgs+2])                #10
-st([vAC])                       #8
-nop()                           #9
-anda([sysArgs+2])               #10
-anda(0x80,X)                    #11
-ld([sysArgs+5])                 #12
-suba([sysArgs+3])               #13
-suba([X])                       #14
-st([vAC+1])                     #15
-bmi('NEXT')                     #16 
+label('sysd#3b')
+ld([sysArgs+4])                 #3 vAC=sysArgs[45]-sysArgs[23]
+bmi(pc()+5)                     #4>
+suba([sysArgs+2])               #5
+st([vAC])                       #6
+bra(pc()+5)                     #7>
+ora([sysArgs+2])                #8
+st([vAC])                       #6-
+nop()                           #7
+anda([sysArgs+2])               #8
+anda(0x80,X)                    #9-
+ld([sysArgs+5])                 #10
+bmi('sysd#13b')                 #11
+suba([sysArgs+3])               #12
+suba([X])                       #13
+st([vAC+1])                     #14
+ora([sysArgs+3])                #15
+bmi(pc()+3)                     #16
+bra(pc()+3)                     #17
+ld('sysd#3c')                   #18
+ld('sysd#3d')                   #18
+st([fsmState])                  #19
+bra('NEXT')                     #20
+ld(-22/2)                       #21
+label('sysd#13b')
+suba([X])                       #13
+st([vAC+1])                     #14
+anda([sysArgs+3])               #15
+bmi(pc()+3)                     #16
+bra(pc()+3)                     #17
+ld('sysd#3c')                   #18
+ld('sysd#3d')                   #18
+st([fsmState])                  #19
+bra('NEXT')                     #20
+ld(-22/2)                       #21
+
+label('sysd#3c')
+ld([sysArgs+0])                 #3 commit
+ora(1)                          #4  quotient|=1
+st([sysArgs+0])                 #5
+ld([vAC])                       #6  sysArgs[45]=vAC 
+st([sysArgs+4])                 #7
+ld([vAC+1])                     #8
+st([sysArgs+5])                 #9
+ld([sysArgs+6])                 #10 counter
+suba(1)                         #11
+beq('sysd#14c')                 #12
+st([sysArgs+6])                 #13
+ld('sysd#3a')                   #14
+st([fsmState])                  #15
+bra('NEXT')                     #16
 ld(-18/2)                       #17
-ld([sysArgs+0])                 #19 vAC>=0 
-ora(1)                          #18 sysArgs[0]++
-st([sysArgs+0])                 #20
-ld([vAC])                       #21 sysArgs[45]=vAC
-st([sysArgs+4])                 #22
-ld([vAC+1])                     #23
-st([sysArgs+5])                 #24
-nop()                           #25
-bra('NEXT')                     #26
-ld(-28/2)                       #27
+label('sysd#14c')
+ld('sysd#3e')                   #14
+st([fsmState])                  #15
+bra('NEXT')                     #16
+ld(-18/2)                       #17
 
-label('.sysd16#3c')
-ld([sysArgs+6])                 #3 count to 16
-suba(15)                        #4
-beq('.sysd16#7b')               #5
-adda(16)                        #6
+label('sysd#3d')
+ld('sysd#3a')                   #3
+st([fsmState])                  #4
+ld([sysArgs+6])                 #5 counter
+suba(1)                         #6
 st([sysArgs+6])                 #7
-ld('.sysd16#3a')                #8 loop
-st([fsmState])                  #9
-bra('NEXT')                     #10
-ld(-12/2)                       #11
-label('.sysd16#7b')
-ld(0)                           #7 restore [sysFn+1]
-st([fsmState])                  #8
-ld(hi('ENTER'))                 #9 exit fsm
-st([vCpuSelect])                #10
-ld(hi('REENTER'),Y)             #11
-jmp(Y,'REENTER')                #12
-ld(-16//2)                      #13
+bne('NEXT')                     #8
+ld(-10/2)                       #9
+ld('sysd#3e')                   #10
+st([fsmState])                  #11
+bra('NEXT')                     #12
+ld(-14/2)                       #13
+
+label('sysd#3e')
+ld([sysArgs+0])                 #3 copy quotient into vAC
+st([vAC])                       #4
+ld([sysArgs+1])                 #5
+st([vAC+1])                     #6
+ld(hi('ENTER'))                 #7 exit fsm
+st([vCpuSelect])                #8
+ld(hi('REENTER'),Y)             #9
+jmp(Y,'REENTER')                #10
+ld(-14//2)                      #11
+
 
 
 #-----------------------------------------------------------------------
