@@ -625,15 +625,12 @@ st([vPC])
 adda(2,X)
 ld(vReset>>8)
 st([vPC+1],Y)
-st('LDI',             [Y,Xpp])
-st('SYS_Reset_88',    [Y,Xpp])
-st('STW',             [Y,Xpp])
-st(sysFn,             [Y,Xpp])
-st('SYS',             [Y,Xpp])  # SYS -> SYS_Reset_88 -> SYS_Exec_88
-st(256-88//2+maxTicks,[Y,Xpp])
+st(0x35,              [Y,Xpp])  # vReset
+st(lo('RESET_v7'),    [Y,Xpp])
+ld(vIRQ_v5 & 0xff, X)
 st(0,                 [Y,Xpp])  # vIRQ_v5: Disable interrupts
 st(0,                 [Y,Xpp])  # vIRQ_v5
-st(0b11111100,        [Y,Xpp])  # Control register
+st(0b01111100,        [Y,Xpp])  # Control register
 st(0,                 [Y,Xpp])  # videoTop
 
 ld(hi('ENTER'))                 # Active interpreter (vCPU,v6502) = vCPU
@@ -666,59 +663,63 @@ jmp(Y,'startVideo')
 st([ledState_v2])               # Setting to 1..126 means "stopped"
 
 #-----------------------------------------------------------------------
-# Extension SYS_Reset_88: Soft reset
+# Soft reset
 #-----------------------------------------------------------------------
 
-# SYS_Reset_88 initiates an immediate Gigatron reset from within the vCPU.
-# The reset sequence itself is mostly implemented in GCL by Reset.gcl,
-# which must first be loaded into RAM. But as that takes more than 1 scanline,
-# some vCPU bootstrapping code gets loaded with SYS_Exec_88.
-# !!! This function was REMOVED from interface.json
-# !!! Better use vReset as generic entry point for soft reset
+# Resets the gigatron without breaking the video loop.
+# This mostly consists of executing Reset.gt1.
+#
+# This used to be achieved with a SYS_Reset_88 that was removed
+# from interface.json for ROMv5a in order to prefer achieving this
+# by jumping to vReset. Instead of a SYS call, this is now
+# achieved by a secret vCPU instruction RESET_v7 that frees
+# the [1f2-1f5] space for other purposes.
 
 # ROM type (see also Docs/GT1-files.txt)
 romTypeValue = symbol('romTypeValue_DEVROM')
 
-label('SYS_Reset_88')
-assert pc()>>8 == 0
-assert (romTypeValue & 7) == 0
-ld(romTypeValue)                #15 Set ROM type/version and clear channel mask
-st([romType])                   #16
-ld(0)                           #17
-st([vSP])                       #18 vSP
-ld(hi('videoTop_v5'),Y)         #19
-st([Y,lo('videoTop_v5')])       #20 Show all 120 pixel lines
-st([Y,vIRQ_v5])                 #21 Disable vIRQ dispatch
-st([Y,vIRQ_v5+1])               #22
-st([soundTimer])                #23 soundTimer
-assert userCode&255 == 0
-st([vLR])                       #24 vLR
+label('softReset#20')
+st([vSP])                       #20 vSP
+nop()                           #21 Empty for vSPH
+ld(hi('videoTop_v5'),Y)         #22
+st([Y,lo('videoTop_v5')])       #23 Show all 120 pixel lines
+st([Y,vIRQ_v5])                 #24 Disable vIRQ dispatch
+st([Y,vIRQ_v5+1])               #25
+st([soundTimer])                #26 soundTimer
+st([vLR])                       #27 vLR
+st([vLR+1])                     #28
+# set videoMode
 if WITH_512K_BOARD:
-  st([videoModeC])              #   25
-ld(userCode>>8)                 #25 26
-st([vLR+1])                     #26 27
-ld('nopixels')                  #27 28 Video mode 3 (fast)
-st([videoModeB])                #28 29
-if not WITH_512K_BOARD:
   st([videoModeC])              #29
-st([videoModeD])                #30
-ld('SYS_Exec_88')               #31 SYS_Exec_88
-st([sysFn])                     #32 High byte (remains) 0
-ld('Reset')                     #33 Reset.gt1 from EPROM
-st([sysArgs+0])                 #34
-ld(hi('Reset'))                 #35
-st([sysArgs+1])                 #36
-ld([vPC])                       #37 Force second SYS call
-suba(2)                         #38
-st([vPC])                       #39
+  ld('nopixels')                #30
+else:
+  ld('nopixels')                #29
+  st([videoModeC])              #30
+st([videoModeB])                #31
+st([videoModeD])                #32
+# Set romTypeValue
+assert (romTypeValue & 7) == 0
+ld(romTypeValue)                #33 Set ROM type/version and clear channel mask
+st([romType])                   #34
 # Reset expansion board
-ctrl(0b01111111)                #40 Reset signal (default state | 0x3)
-ctrl(0b01111100)                #41 Default state.
-ld([vTmp])                      #42 Always load after ctrl
-# Return to interpreter
-ld(hi('REENTER'),Y)             #43
-jmp(Y,'REENTER')                #44
-ld(-48/2)                       #45
+ctrl(0b01111111)                #35 Reset signal (default state | 0x3)
+ctrl(0b01111100)                #36 Default state.
+ld([vTmp])                      #37 Always load after ctrl
+
+# Adjust vTicks for sys_Exec
+nop()                           #38
+ld(-30/2)                       #39-30=9
+
+# Exec Reset.gt1
+adda([vTicks])                  #10
+st([vTicks])                    #11
+ld('Reset')                     #12 Reset.gt1 from EPROM
+st([sysArgs+0])                 #13
+ld(hi('Reset'))                 #14
+ld(hi('sys_Exec'),Y)            #15
+jmp(Y,'sys_Exec')               #16
+st([sysArgs+1])                 #17
+
 
 #-----------------------------------------------------------------------
 # Placeholders for future SYS functions. This works as a kind of jump
@@ -6815,6 +6816,18 @@ label('PREFIX35_PAGE')
 def oplabel(name):
   define(name, 0x3500 | (pc() & 0xff))
 
+# Self-restart
+label('p35restart#18')
+nop()                           #18
+nop()                           #19
+nop()                           #20
+ld(-2)                          #21
+adda([vPC])                     #22
+st([vPC])                       #23
+ld(hi('NEXTY'),Y)               #24
+jmp(Y,'NEXTY')                  #25
+ld(-28/2)                       #26
+
 # Jump into FSM14
 label('fsm14op1#16')
 st([fsmState])                  #16
@@ -6893,6 +6906,16 @@ nop()                           #17
 label('bccy#18')
 bra('bccy#20')                  #18
 ld([Y,X])                       #19
+
+# Instruction RESET_v7.
+# * Causes a soft reset. Called by 'vReset' only.
+oplabel('RESET_v7')
+ld(min(0,maxTicks-88//2))       #14 serious margin
+adda([vTicks])                  #15
+blt('p35restart#18')            #16
+ld(hi('softReset#20'),Y)        #17
+jmp(Y,'softReset#20')           #18
+ld(0)                           #19
 
 # Instruction slots
 
