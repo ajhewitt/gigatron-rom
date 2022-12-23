@@ -465,8 +465,9 @@ def runVcpu(n, ref=None, returnTo=None):
   assert n >= v6502_adjust
 
   print('runVcpu at $%04x net cycles %3s info %s' % (pc(), n, ref))
-  ld([vCpuSelect],Y)            #0
-  if m == 1: nop()              # Tick alignment
+
+  ld([vCpuSelect],Y)            #0 Allows us to use ctrl() just before runVcpu
+  if m == 1: nop()              #1 Tick alignment
   if returnTo != 0x100:
     if returnTo is None:
       returnTo = pc() + 4       # Next instruction
@@ -1387,7 +1388,7 @@ else:
   bmi(pc()+3)                     #52
   bra(pc()+3)                     #53
   nop()                           #54
-  ctrl(Y,0xD0)                    #54 instead of #46 (wrong by 1us)
+  ctrl(Y,0xD0)                    #54 instead of #43 (wrong by ~2us)
   ld([sample])                    #55
   ora(0x0f)                       #56 New sound sample is ready
   anda([xoutMask])                #57
@@ -1557,52 +1558,52 @@ if WITH_512K_BOARD:
   align(0x100, size=0x100)
 
   # Front porch
-  ld([channel])                   #1 TODO: Use fact that AC==[channel] already!!!
-  anda([channelMask])             #2
-  adda(1)                         #3
+  anda([channelMask])             #1 AC is [channel] already!
+  adda(1)                         #2
+  st([channel],Y)                 #3
   ld(syncBits^hSync,OUT)          #4 Start horizontal pulse (4)
 
   # Horizontal sync and sound channel update for scanlines outside vBlank
   label('sound2')
-  st([channel],Y)                 #5
-  ld(0x7f)                        #6
-  anda([Y,oscL])                  #7
-  adda([Y,keyL])                  #8
-  st([Y,oscL])                    #9
-  anda(0x80,X)                    #10
-  ld([X])                         #11
-  adda([Y,oscH])                  #12
-  adda([Y,keyH])                  #13
-  st([Y,oscH] )                   #14
-  anda(0xfc)                      #15
-  xora([Y,wavX])                  #16
-  ld(AC,X)                        #17
-  ld([Y,wavA])                    #18
-  ld(soundTable>>8,Y)             #19
-  adda([Y,X])                     #20
-  bmi(pc()+3)                     #21
-  bra(pc()+3)                     #22
-  anda(63)                        #23
-  ld(63)                          #23(!)
-  adda([sample])                  #24
-  st([sample])                    #25
-  ld([xout])                      #26 Gets copied to XOUT
+  ld(0x7f)                        #5
+  anda([Y,oscL])                  #6
+  adda([Y,keyL])                  #7
+  st([Y,oscL])                    #8
+  anda(0x80,X)                    #9
+  ld([X])                         #10
+  adda([Y,oscH])                  #11
+  adda([Y,keyH])                  #12
+  st([Y,oscH] )                   #13
+  anda(0xfc)                      #14
+  xora([Y,wavX])                  #15
+  ld(AC,X)                        #16
+  ld([Y,wavA])                    #17
+  ld(soundTable>>8,Y)             #18
+  adda([Y,X])                     #19
+  bmi(pc()+3)                     #20
+  bra(pc()+3)                     #21
+  anda(63)                        #22
+  ld(63)                          #22(!)
+  adda([sample])                  #23
+  st([sample])                    #24
+  ld([xout])                      #25 Gets copied to XOUT
+  ld(videoTable>>8,Y)             #26 Make Y=1 for all videoABC routines!
   bra([nextVideo])                #27
   ld(syncBits,OUT)                #28 End horizontal pulse
 
   # Back porch A: first of 4 repeated scan lines
   # - Fetch next Yi and store it for retrieval in the next scan lines
-  # - Calculate Xi from dXi, but there is no cycle time left to store it as well
+  # - Calculate Xi from dXi and store it as well thanks to a saved cycle.
   label('videoA')
   ld('videoB')                    #29 1st scanline of 4 (always visible)
   st([nextVideo])                 #30
-  ld(videoTable>>8,Y)             #31
-  ld([videoY],X)                  #32
-  ld([Y,X])                       #33
-  st([Y,Xpp])                     #34 Just X++
-  st([frameY])                    #35
-  ld([Y,X])                       #36
-  adda([frameX],X)                #37
+  ld([videoY],X)                  #31
+  ld([Y,X])                       #32 Y is already 1
+  st([Y,Xpp])                     #33 Just X++
+  st([frameY])                    #34
+  ld([Y,X])                       #35
+  adda([frameX])                  #36
+  st([frameX],X)                  #37 I am sure Marcel sought to do this (LB)
   ld([frameY],Y)                  #38
   ld(syncBits)                    #39
   ora([Y,Xpp],OUT)                #40 begin of pixel burst
@@ -1611,27 +1612,21 @@ if WITH_512K_BOARD:
           returnTo=0x1ff )
 
   # Back porch B: second of 4 repeated scan lines
-  # - Recompute Xi from dXi and store for retrieval in the next scan lines
+  # - Process double vres
   label('videoB')
-  ld(videoTable>>8,Y)             #29 2nd scanline of 4
-  ld([videoY])                    #30
-  adda(1,X)                       #31
-  ld([frameX])                    #32
-  adda([Y,X])                     #33
-  st([frameX],X)                  #34 Store in RAM and X
-  nop()                           #35
-  ld([frameY],Y)                  #36
+  ld('videoC')                    #29
+  st([nextVideo])                 #30
+  ld([frameY],Y)                  #31
+  ld([videoModeC])                #32 New role for videoModeC
+  anda(1)                         #33
+  adda([frameY])                  #34
+  st([frameY])                    #35
+  ld([frameX],X)                  #36
   ld(syncBits)                    #37
   bra([videoModeB])               #38
   bra(pc()+2)                     #39
   nop()                           #40 'pixels' or 'nopixels'
-  ld('videoC')                    #41
-  st([nextVideo])                 #42
-  ld([videoModeC])                #43 New role for videoModeC
-  anda(1)                         #44
-  adda([frameY])                  #45
-  st([frameY])                    #46
-  runVcpu(200-47,                 #47
+  runVcpu(200-41,                 #41
           '-B-- line 40-520',
           returnTo=0x1ff )
 
@@ -1646,21 +1641,22 @@ if WITH_512K_BOARD:
   anda([xoutMask])                #33
   st([xout])                      #34 Update [xout] with new sample (4 channels just updated)
   ld([frameX],X)                  #35
-  nop()                           #36
-  nop()                           #37
+  ld([xoutMask])                  #36
+  bmi('videoC#39')                #37
   ld([frameY],Y)                  #38
+  ld(syncBits)                    #39
+  ora([Y,Xpp], OUT)               #40 Always outputs pixels on C lines
+  runVcpu(200-41,                 #41
+          '-B-- line 40-520 no sound',
+          returnTo=0x1ff )
+  label('videoC#39')
   ld(syncBits)                    #39
   ora([Y,Xpp], OUT)               #40 Always outputs pixels on C lines
   ld([sample],Y)                  #41
   st(sample, [sample])            #42 Reset for next sample
-  ld([xoutMask])                  #43
-  bmi(pc()+3)                     #44
-  bra(pc()+3)                     #45
-  nop()                           #46
-  ctrl(Y,0xD0);                   #46 Forward audio to PWM (only when audio is active)
-  ld([vTmp])                      #47
-  runVcpu(200-48,                 #48
-          '--C- line 40-520',
+  ctrl(Y,0xD0);                   #43 Forward audio to PWM (only when audio is active)
+  runVcpu(200-44,                 #44
+          '--C- line 40-520 sound forwarding',
         returnTo=0x1ff )
 
   # Back porch D: last of 4 repeated scan lines
