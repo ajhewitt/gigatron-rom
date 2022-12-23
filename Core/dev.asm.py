@@ -163,6 +163,7 @@ import font_v4 as font
 
 # Enable patches for 512k extension
 WITH_512K_BOARD = defined('WITH_512K_BOARD')
+WITH_128K_BOARD = defined('WITH_128K_BOARD')
 
 enableListing()
 #-----------------------------------------------------------------------
@@ -271,7 +272,10 @@ zpReserved      = zpByte() # Recycled and still unused. Candidate future uses:
 vCpuSelect      = zpByte() # Active interpreter page
 
 # Entropy harvested from SRAM startup and controller input
-entropy         = zpByte(3)
+entropy         = zpByte(2)
+
+# Former entropy+2
+reserved1       = zpByte(1)
 
 # Visible video
 videoY          = zpByte() # Counts up from 0 to 238 in steps of 2
@@ -339,10 +343,17 @@ fsmState        = sysArgs+7
 # Play sound if non-zero, count down and stop sound when zero
 soundTimer      = zpByte()
 
+# Former ledTimer
+reserved2       = zpByte()
+
 # Fow now the LED state machine itself is hard-coded in the program ROM
-ledTimer        = zpByte() # Number of ticks until next LED change
 ledState_v2     = zpByte() # Current LED state
 ledTempo        = zpByte() # Next value for ledTimer after LED state change
+
+
+if WITH_128K_BOARD:
+  ctrlBitsVideo = reserved1
+  ctrlBitsCopy  = reserved2
 
 
 # Management of free space in page zero (userVars)
@@ -384,6 +395,10 @@ userVars2       = zpByte(0)
 videoTable      = 0x0100 # Indirection table: Y[0] dX[0]  ..., Y[119] dX[119]
 
 vReset          = 0x01f0
+ledTimer        = 0x01f2 # (displaced) Ticks until next LED change
+entropy2        = 0x01f3 # (displaced) Entropy hidden state
+reserved4       = 0x01f4
+reserved5       = 0x01f5
 vIRQ_v5         = 0x01f6
 ctrlBits        = 0x01f8
 videoTop_v5     = 0x01f9 # Number of skip lines
@@ -443,26 +458,20 @@ def runVcpu(n, ref=None, returnTo=None):
 
   n -= overhead
   assert n > 0
-
-  if n % 2 == 1:
-    nop()                       # Tick alignment
-    n -= 1
-  assert n % 2 == 0
-
-  print('runVcpu at $%04x net cycles %3s info %s' % (pc(), n, ref))
-
-  if returnTo != 0x100:
-    if returnTo is None:
-      returnTo = pc() + 5       # Next instruction
-    ld(lo(returnTo))            #0
-    st([vReturn])               #1
-
+  m = n % 2                     # Need alignment?
   n //= 2
   n -= maxTicks                 # First instruction always runs
   assert n < 128
   assert n >= v6502_adjust
 
-  ld([vCpuSelect],Y)            #2
+  print('runVcpu at $%04x net cycles %3s info %s' % (pc(), n, ref))
+  ld([vCpuSelect],Y)            #0
+  if m == 1: nop()              # Tick alignment
+  if returnTo != 0x100:
+    if returnTo is None:
+      returnTo = pc() + 4       # Next instruction
+    ld(lo(returnTo))            #1
+    st([vReturn])               #2
   jmp(Y,'ENTER')                #3
   ld(n)                         #4
 assert runVcpu_overhead ==       5
@@ -544,6 +553,11 @@ ctrl(0b01111100)                # Disable SPI slaves, enable RAM, bank 1
 #      `--------- B1
 # bit15 --------- MOSI = 0
 
+if WITH_128K_BOARD:
+  ld(0x7c)
+  st([ctrlBitsVideo])
+  st([ctrlBitsCopy])
+
 # Simple RAM test and size check by writing to [1<<n] and see if [0] changes or not.
 ld(1)                           # Quick RAM test and count
 label('.countMem0')
@@ -603,8 +617,10 @@ adda([entropy+0])
 xora(193)
 label('.initEnt2')
 st([entropy+1])
-adda([entropy+2])
-st([entropy+2])
+ld(1,Y)
+adda([Y,entropy2])
+st([Y,entropy2])
+ld([vAC+1],Y)
 ld([vAC+0])
 adda(1)
 bne('.initEnt0')
@@ -705,11 +721,14 @@ st([romType])                   #34
 ctrl(0b01111111)                #35 Reset signal (default state | 0x3)
 ctrl(0b01111100)                #36 Default state.
 ld([vTmp])                      #37 Always load after ctrl
-
-# Adjust vTicks for sys_Exec
-nop()                           #38
-ld(-30/2)                       #39-30=9
-
+if WITH_128K_BOARD:
+  ld(0x7c)                      #38
+  st([ctrlBitsVideo])           #39
+  st([ctrlBitsCopy])            #40
+  ld(-32/2)                     #41-32=9
+else:
+  nop()                         #38 adjust vticks
+  ld(-30/2)                     #39-30=9
 # Exec Reset.gt1
 adda([vTicks])                  #10
 st([vTicks])                    #11
@@ -1132,7 +1151,7 @@ st([videoY])                    #36
 
 # Update frame count and [0x80] (4 cycles)
 ld(1)                           #37 Reinitialize carry lookup, for robustness
-st([0x80])                      #38
+st([0x80],Y)                    #38 And set Y=1 for 1fx variables
 adda([frameCount])              #39 Frame counter
 st([frameCount])                #40
 
@@ -1141,8 +1160,8 @@ xora([entropy+1])               #41 Mix entropy
 xora([serialRaw])               #42 Mix in serial input
 adda([entropy+0])               #43
 st([entropy+0])                 #44
-adda([entropy+2])               #45 Some hidden state
-st([entropy+2])                 #46
+adda([Y,entropy2])              #45 Some hidden state
+st([Y,entropy2])                #46
 bmi(pc()+3)                     #47
 bra(pc()+3)                     #48
 xora(64+16+2+1)                 #49
@@ -1150,61 +1169,68 @@ xora(64+32+8+4)                 #49(!)
 adda([entropy+1])               #50
 st([entropy+1])                 #51
 
-# LED sequencer (18 cycles)
-ld([ledTimer])                  #52 Blinkenlight sequencer
-beq(pc()+3)                     #53
-bra(pc()+3)                     #54
-suba(1)                         #55
-ld([ledTempo])                  #55(!)
-st([ledTimer])                  #56
-beq(pc()+3)                     #57
-bra(pc()+3)                     #58
-ld(0)                           #59 Don't advance state
-ld(1)                           #59(!) Advance state when timer passes through 0
-adda([ledState_v2])             #60
-bne(pc()+3)                     #61
-bra(pc()+3)                     #62
-ld(-24)                         #63 State 0 becomes -24, start of sequence
-bgt('.leds#65')                 #63(!) Catch the stopped state (>0)
-st([ledState_v2])               #64
-adda('.leds#69')                #65
-bra(AC)                         #66 Jump to lookup table
-bra('.leds#69')                 #67 Single-instruction subroutine
-
+# LED sequencer (15 cycles)
+ld([Y,ledTimer])                #52 Blinkenlight sequencer
+suba(1)                         #53
+bne('.leds#56')                 #54
+st([Y,ledTimer])                #55
+ld(1)                           #56
+adda([ledState_v2])             #57
+label('.leds#58')
+bne(pc()+3)                     #58
+bra(pc()+3)                     #59
+ld(-24)                         #60 State 0 becomes -24, start of sequence
+bgt('.leds#62')                 #60(!) Catch the stopped state (>0)
+st([ledState_v2])               #61
+adda('.leds#65')                #62
+bra(AC)                         #63 Jump to lookup table
+bra('.leds#66')                 #64 Single-instruction subroutine
+label('.leds#56')
+bge('.leds#58')                 #56
+ld([ledState_v2])               #57
+ld([ledTempo])                  #58
+st([Y,ledTimer])                #59
+bra(pc()+1)                     #60
+nop()                           #61,62
+bra('.leds#65')                 #63
+ld([xoutMask])                  #64
+label('.leds#62')
+ld(0xf)                         #62 Maintain stopped state
+st([ledState_v2])               #63
+bra('.leds#66')                 #64 
+anda([xoutMask])                #65
+ld(0b1111)                      #65 LEDs |****| offset -24 Low 4 bits are the LED output
+ld(0b0111)                      #65 LEDs |***O|
+ld(0b0011)                      #65 LEDs |**OO|
+ld(0b0001)                      #65 LEDs |*OOO|
+ld(0b0010)                      #65 LEDs |O*OO|
+ld(0b0100)                      #65 LEDs |OO*O|
+ld(0b1000)                      #65 LEDs |OOO*|
+ld(0b0100)                      #65 LEDs |OO*O|
+ld(0b0010)                      #65 LEDs |O*OO|
+ld(0b0001)                      #65 LEDs |*OOO|
+ld(0b0011)                      #65 LEDs |**OO|
+ld(0b0111)                      #65 LEDs |***O|
+ld(0b1111)                      #65 LEDs |****|
+ld(0b1110)                      #65 LEDs |O***|
+ld(0b1100)                      #65 LEDs |OO**|
+ld(0b1000)                      #65 LEDs |OOO*|
+ld(0b0100)                      #65 LEDs |OO*O|
+ld(0b0010)                      #65 LEDs |O*OO|
+ld(0b0001)                      #65 LEDs |*OOO|
+ld(0b0010)                      #65 LEDs |O*OO|
+ld(0b0100)                      #65 LEDs |OO*O|
+ld(0b1000)                      #65 LEDs |OOO*|
+ld(0b1100)                      #65 LEDs |OO**|
+ld(0b1110)                      #65 LEDs |O***| offset -1
 label('.leds#65')
-ld(0x0f)                        #65 Maintain stopped state
-st([ledState_v2])               #66
-bra('.leds#69')                 #67
-anda([xoutMask])                #68 Always clear sound bits (this is why AC=0x0f)
+anda(0xf)                       #65 Always clear sound bits
+label('.leds#66')
+st([xoutMask])                  #66 Sound bits will be re-enabled below
 
-ld(0b1111)                      #68 LEDs |****| offset -24 Low 4 bits are the LED output
-ld(0b0111)                      #68 LEDs |***O|
-ld(0b0011)                      #68 LEDs |**OO|
-ld(0b0001)                      #68 LEDs |*OOO|
-ld(0b0010)                      #68 LEDs |O*OO|
-ld(0b0100)                      #68 LEDs |OO*O|
-ld(0b1000)                      #68 LEDs |OOO*|
-ld(0b0100)                      #68 LEDs |OO*O|
-ld(0b0010)                      #68 LEDs |O*OO|
-ld(0b0001)                      #68 LEDs |*OOO|
-ld(0b0011)                      #68 LEDs |**OO|
-ld(0b0111)                      #68 LEDs |***O|
-ld(0b1111)                      #68 LEDs |****|
-ld(0b1110)                      #68 LEDs |O***|
-ld(0b1100)                      #68 LEDs |OO**|
-ld(0b1000)                      #68 LEDs |OOO*|
-ld(0b0100)                      #68 LEDs |OO*O|
-ld(0b0010)                      #68 LEDs |O*OO|
-ld(0b0001)                      #68 LEDs |*OOO|
-ld(0b0010)                      #68 LEDs |O*OO|
-ld(0b0100)                      #68 LEDs |OO*O|
-ld(0b1000)                      #68 LEDs |OOO*|
-ld(0b1100)                      #68 LEDs |OO**|
-ld(0b1110)                      #68 LEDs |O***| offset -1
-label('.leds#69')
-st([xoutMask])                  #69 Sound bits will be re-enabled below
-ld(vPulse*2)                    #70 vPulse default length when not modulated
-st([videoPulse])                #71
+# Default video pulse length
+ld(vPulse*2)                    #67 vPulse default length when not modulated
+st([videoPulse])                #68
 
 # When the total number of scan lines per frame is not an exact multiple of the
 # (4) channels, there will be an audible discontinuity if no measure is taken.
@@ -1220,42 +1246,51 @@ if soundDiscontinuity == 2:
 if soundDiscontinuity > 2:
   highlight('Warning: sound discontinuity not suppressed')
 
+if WITH_128K_BOARD:
+  # The cpu bank is enabled during vblank.
+  # Rebuild ctrlBits{Video,Copy} since Y=1
+  # at the cost of 4 extra cycles.
+  ld([Y,ctrlBits])              #+1
+  st([ctrlBitsCopy],X)          #+2
+  anda(0x3c)                    #+3
+  ora(0x40)                     #+4
+  st([ctrlBitsVideo])           #+5
+  ctrl(X)                       #+6 next must be a load
+  extra += 6
+
 # vCPU interrupt
-ld([frameCount])                #72
-beq('vBlankFirst#75')           #73
+ld([frameCount])                #69
+beq('vBlankFirst#72')           #70
 
-runVcpu(186-74-extra,           #74 Application cycles (scan line 0)
+runVcpu(190-71-extra,           #71 Application cycles (scan line 0)
     '---D line 0 no timeout',
-    returnTo='vBlankFirst#186')
+    returnTo='vBlankFirst#190')
 
-label('vBlankFirst#75')
-ld(hi('vBlankFirst#78'),Y)      #75
-jmp(Y,'vBlankFirst#78')         #76
-ld(hi(vIRQ_v5),Y)               #77
-label('vBlankFirst#186')
+label('vBlankFirst#72')
+ld(hi('vBlankFirst#75'),Y)      #72
+jmp(Y,'vBlankFirst#75')         #73
+ld(hi(vIRQ_v5),Y)               #74
+
+label('vBlankFirst#190')
 
 # Mitigation for rogue channelMask (3 cycles)
-ld([channelMask])               #186 Normalize channelMask, for robustness
-anda(0b11111011)                #187
-st([channelMask])               #188
+ld([channelMask])               #190 Normalize channelMask, for robustness
+anda(0b11111011)                #191
+st([channelMask])               #192
+# Sound timer
+ld([soundTimer])                #193
+bne('.sound00')                 #194
+suba(1)                         #195
+bra('.sound01')                 #196
+ld(0)                           #197
+label('.sound00')
+st([soundTimer])                #196
+ld(0xf0)                        #197
+label('.sound01')
+ora([xoutMask])                 #198
+st([xoutMask])                  #199
 
-# Sound on/off (6 cycles)
-ld([soundTimer])                #189 Sound on/off
-bne(pc()+3)                     #190
-bra(pc()+3)                     #191
-ld(0)                           #192 Keeps sound unchanged (should be off here)
-ld(0xf0)                        #192(!) Turns sound back on
-ora([xoutMask])                 #193
-st([xoutMask])                  #194
-
-# Sound timer count down (5 cycles)
-ld([soundTimer])                #195 Sound timer
-beq(pc()+3)                     #196
-bra(pc()+3)                     #197
-suba(1)                         #198
-ld(0)                           #198
-st([soundTimer])                #199
-
+# New scan line 
 ld([videoSync0],OUT)            #0 <New scan line start>
 label('sound1')
 ld([channel])                   #1 Advance to next sound channel
@@ -1334,7 +1369,8 @@ else:
   ld([sample],Y)                  #50
 
 label('vBlankNormal')
-runVcpu(199-51, 'AB-D line 1-36')#51 Application cycles (vBlank scan lines without sound sample update)
+runVcpu(199-51,                 #51 Application cycles (vBlank scan lines without sound sample update)
+        'AB-D line 1-36')
 bra('sound1')                   #199
 ld([videoSync0],OUT)            #0 <New scan line start>
 
@@ -1344,7 +1380,8 @@ if not WITH_512K_BOARD:
   anda([xoutMask])                #52
   st([xout])                      #53
   st(sample, [sample])            #54 Reset for next sample
-  runVcpu(199-55,'--C- line 3-39')#55 Application cycles (vBlank scan lines with sound sample update)
+  runVcpu(199-55,                 #55 Application cycles (vBlank scan lines with sound sample update)
+          '--C- line 3-39')
 else:
   ld([xoutMask])                  #51
   bmi(pc()+3)                     #52
@@ -1356,7 +1393,8 @@ else:
   anda([xoutMask])                #57
   st([xout])                      #58
   st(sample, [sample])            #59 Reset for next sample
-  runVcpu(199-60,'--C- line 3-39')#60 Application cycles (vBlank scan lines with sound sample update)
+  runVcpu(199-60,                 #60 Application cycles (vBlank scan lines with sound sample update)
+          '--C- line 3-39')
 
 bra('sound1')                   #199
 ld([videoSync0],OUT)            #0 <New scan line start>
@@ -1418,235 +1456,108 @@ xora(~buttonSelect)             #67 Only trigger when just [Select] is pressed
 bne('.select#70')               #68
 
 if not WITH_512K_BOARD:
-  ld([videoModeC])                #69
-  bmi('.select#72')               #70 Branch when line C is off
-  ld([videoModeB])                #71 Rotate: Off->D->B->C
-  st([videoModeC])                #72
-  ld([videoModeD])                #73
-  st([videoModeB])                #74
-  bra('.select#77')               #75
+  ld([videoModeC])              #69
+  bmi('.select#72')             #70 Branch when line C is off
+  ld([videoModeB])              #71 Rotate: Off->D->B->C
+  st([videoModeC])              #72
+  ld([videoModeD])              #73
+  st([videoModeB])              #74
+  bra('.select#77')             #75
   label('.select#72')
-  ld('nopixels')                  #72,76
-  ld('pixels')                    #73 Reset: On->D->B->C
-  st([videoModeC])                #74
-  st([videoModeB])                #75
-  nop()                           #76
+  ld('nopixels')                #72,76
+  ld('pixels')                  #73 Reset: On->D->B->C
+  st([videoModeC])              #74
+  st([videoModeB])              #75
+  nop()                         #76
   label('.select#77')
-  st([videoModeD])                #77
+  st([videoModeD])              #77
 else:
-  ld([videoModeB])                #69
-  xora('nopixels')                #70
-  beq('.select#73')               #71
-  ld([videoModeD])                #72
-  st([videoModeB])                #73
-  bra('.select#76')               #74
-  ld('nopixels')                  #75
+  ld([videoModeB])              #69
+  xora('nopixels')              #70
+  beq('.select#73')             #71
+  ld([videoModeD])              #72
+  st([videoModeB])              #73
+  bra('.select#76')             #74
+  ld('nopixels')                #75
   label('.select#73')
-  ld('pixels')                    #73
-  st([videoModeB])                #74
-  nop()                           #75
+  ld('pixels')                  #73
+  st([videoModeB])              #74
+  nop()                         #75
   label('.select#76')
-  st([videoModeD])                #76
-  nop()                           #77
+  st([videoModeD])              #76
+  nop()                         #77
 
-wait(188-78)                    #78 Don't waste code space expanding runVcpu here
-# AC==255 now
-st([buttonState])               #188
-bra('vBlankEnd#191')            #189
-ld(0)                           #190
-label('.select#70')
+ld(255)                         #78
+st([buttonState])               #79
 
-# Mitigation of runaway channel variable
-ld([channel])                   #70 Normalize channel, for robustness
-anda(0b00000011)                #71
-st([channel])                   #72 Stop wild channel updates
+if not WITH_128K_BOARD:
 
-runVcpu(191-73, '---D line 40') #73 Application cycles (scan line 40)
+  runVcpu(189-80,               #80
+          '---D line 40 select',
+          returnTo='vBlankEnd#189')
+  label('.select#70')
+  runVcpu(189-70,               #70
+          '---D line 40 no select',
+          returnTo='vBlankEnd#189')
+  # This must end in 0x1fe and continue
+  # with the video loop entry point at 0x1ff
+  fillers(until=0xf3)
+  label('vBlankEnd#189')
+  ld(videoTop_v5>>8,Y)          #189
+  ld([Y,videoTop_v5])           #190
+  st([videoY])                  #191
+  st([frameX])                  #192
+  bne(pc()+3)                   #193
+  bra(pc()+3)                   #194
+  ld('videoA')                  #195
+  ld('videoF')                  #195(!)
+  st([nextVideo])               #196
+  ld([channel])                 #197 Normalize channel for robustness
+  anda(0b00000011)              #198
+  st([channel])                 #199
 
-# AC==0 now
-label('vBlankEnd#191')
-ld(videoTop_v5>>8,Y)            #191
-ld([Y,videoTop_v5])             #192
-st([videoY])                    #193
-st([frameX])                    #194
-bne(pc()+3)                     #195
-bra(pc()+3)                     #196
-ld('videoA')                    #197
-ld('videoF')                    #197(!)
-st([nextVideo])                 #198
-ld([channel])                   #199 Advance to next sound channel
-anda([channelMask])             #0 <New scan line start>
-adda(1)                         #1
-ld(hi('sound2'),Y)              #2
-jmp(Y,'sound2')                 #3
-ld(syncBits^hSync,OUT)          #4 Start horizontal pulse
+else: # WITH_128K_BOARD
 
-fillers(until=0xff)
+  runVcpu(188-80,               #80
+          '---D line 40 select',
+          returnTo='vBlankEnd#188')
+  label('.select#70')
+  runVcpu(188-70,               #70
+          '---D line 40 no select',
+          returnTo='vBlankEnd#188')
+  fillers(until=0xf2)
+  # Since the entry point is in 0x1fe/#199
+  # we have to shift all this by one byte/cycle.
+  label('vBlankEnd#188')
+  ld(videoTop_v5>>8,Y)          #188
+  ld([Y,videoTop_v5])           #189
+  st([videoY])                  #190
+  st([frameX])                  #191
+  bne(pc()+3)                   #192
+  bra(pc()+3)                   #193
+  ld('videoA')                  #194
+  ld('videoF')                  #194(!)
+  st([nextVideo])               #195
+  ld([channel])                 #196 Normalize channel for robustness
+  anda(0b00000011)              #197
+  st([channel])                 #198
 
-#-----------------------------------------------------------------------
-# Return point for vCPU slices during visible screen area
-#-----------------------------------------------------------------------
-
-assert pc() == 0x1ff            # Enables runVcpu() to re-enter into the next page
-if not WITH_512K_BOARD:
-  bra('sound3')                   #200,0 <New scan line start>
-else:
-  ld(syncBits,OUT)                #200,0 <New scan line start>
 
 #-----------------------------------------------------------------------
 #
 #  $0200 ROM page 2: Video loop visible scanlines
 #
 #-----------------------------------------------------------------------
-align(0x100, size=0x100)
 
 
-if not WITH_512K_BOARD:
 
-  ld([channel])                   #1 Advance to next sound channel
-
-  # Back porch A: first of 4 repeated scan lines
-  # - Fetch next Yi and store it for retrieval in the next scan lines
-  # - Calculate Xi from dXi, but there is no cycle time left to store it as well
-  label('videoA')
-  ld('videoB')                    #29 1st scanline of 4 (always visible)
-  st([nextVideo])                 #30
-  ld(videoTable>>8,Y)             #31
-  ld([videoY],X)                  #32
-  ld([Y,X])                       #33
-  st([Y,Xpp])                     #34 Just X++
-  st([frameY])                    #35
-  ld([Y,X])                       #36
-  adda([frameX],X)                #37
-  label('pixels')
-  ld([frameY],Y)                  #38
-  ld(syncBits)                    #39
-
-  # Stream 160 pixels from memory location <Yi,Xi> onwards
-  # Superimpose the sync signal bits to be robust against misprogramming
-  for i in range(qqVgaWidth):
-    ora([Y,Xpp],OUT)              #40-199 Pixel burst
-  ld(syncBits,OUT)                #0 <New scan line start> Back to black
+if WITH_512K_BOARD:
+  assert pc() == 0x1ff            # Enables runVcpu() to re-enter into the next page
+  ld(syncBits,OUT)                #200,0 <New scan line start>
+  align(0x100, size=0x100)
 
   # Front porch
-  ld([channel])                   #1 Advance to next sound channel
-  label('sound3')                 # Return from vCPU interpreter
-  anda([channelMask])             #2
-  adda(1)                         #3
-  ld(syncBits^hSync,OUT)          #4 Start horizontal pulse
-
-  # Horizontal sync and sound channel update for scanlines outside vBlank
-  label('sound2')
-  st([channel],Y)                 #5
-  ld(0x7f)                        #6
-  anda([Y,oscL])                  #7
-  adda([Y,keyL])                  #8
-  st([Y,oscL])                    #9
-  anda(0x80,X)                    #10
-  ld([X])                         #11
-  adda([Y,oscH])                  #12
-  adda([Y,keyH])                  #13
-  st([Y,oscH] )                   #14
-  anda(0xfc)                      #15
-  xora([Y,wavX])                  #16
-  ld(AC,X)                        #17
-  ld([Y,wavA])                    #18
-  ld(soundTable>>8,Y)             #19
-  adda([Y,X])                     #20
-  bmi(pc()+3)                     #21
-  bra(pc()+3)                     #22
-  anda(63)                        #23
-  ld(63)                          #23(!)
-  adda([sample])                  #24
-  st([sample])                    #25
-
-  ld([xout])                      #26 Gets copied to XOUT
-  bra([nextVideo])                #27
-  ld(syncBits,OUT)                #28 End horizontal pulse
-
-  # Back porch B: second of 4 repeated scan lines
-  # - Recompute Xi from dXi and store for retrieval in the next scan lines
-  label('videoB')
-  ld('videoC')                    #29 2nd scanline of 4
-  st([nextVideo])                 #30
-  ld(videoTable>>8,Y)             #31
-  ld([videoY])                    #32
-  adda(1,X)                       #33
-  ld([frameX])                    #34
-  adda([Y,X])                     #35
-  bra([videoModeB])               #36
-  st([frameX],X)                  #37 Store in RAM and X
-
-  # Back porch C: third of 4 repeated scan lines
-  # - Nothing new to for video do as Yi and Xi are known,
-  # - This is the time to emit and reset the next sound sample
-  label('videoC')
-  ld('videoD')                    #29 3rd scanline of 4
-  st([nextVideo])                 #30
-  ld([sample])                    #31 New sound sample is ready (didn't fit in audio loop)
-  ora(0x0f)                       #32
-  anda([xoutMask])                #33
-  st([xout])                      #34 Update [xout] with new sample (4 channels just updated)
-  st(sample, [sample])            #35 Reset for next sample
-  bra([videoModeC])               #36
-  ld([frameX],X)                  #37
-
-  # Back porch D: last of 4 repeated scan lines
-  # - Calculate the next frame index
-  # - Decide if this is the last line or not
-  label('videoD')                 # Default video mode
-  ld([frameX], X)                 #29 4th scanline of 4
-  ld([videoY])                    #30
-  suba((120-1)*2)                 #31
-  beq('.lastpixels#34')           #32
-  adda(120*2)                     #33 More pixel lines to go
-  st([videoY])                    #34
-  ld('videoA')                    #35
-  bra([videoModeD])               #36
-  st([nextVideo])                 #37
-
-  label('.lastpixels#34')
-  if soundDiscontinuity == 1:
-    st(sample, [sample])          #34 Sound continuity
-  else:
-    nop()                         #34
-  ld('videoE')                    #35 No more pixel lines to go
-  bra([videoModeD])               #36
-  st([nextVideo])                 #37
-
-  # Back porch "E": after the last line
-  # - Go back and and enter vertical blank (program page 2)
-  label('videoE') # Exit visible area
-  ld(hi('vBlankStart'),Y)         #29 Return to vertical blank interval
-  jmp(Y,'vBlankStart')            #30
-  ld(syncBits)                    #31
-
-  # Video mode that blacks out one or more pixel lines from the top of screen.
-  # This yields some speed, but also frees up screen memory for other purposes.
-  # Note: Sound output becomes choppier the more pixel lines are skipped
-  # Note: The vertical blank driver leaves 0x80 behind in [videoSync1]
-  label('videoF')
-  ld([videoSync1])                #29 Completely black pixel line
-  adda(0x80)                      #30
-  st([videoSync1],X)              #31
-  ld([frameX])                    #32
-  suba([X])                       #33 Decrements every two VGA scanlines
-  beq('.videoF#36')               #34
-  st([frameX])                    #35
-  bra('nopixels')                 #36
-  label('.videoF#36')
-  ld('videoA')                    #36,37 Transfer to visible screen area
-  st([nextVideo])                 #37
-  #
-  # Alternative for pixel burst: faster application mode
-  label('nopixels')
-  runVcpu(200-38, 'ABCD line 40-520',
-          returnTo=0x1ff)         #38 Application interpreter (black scanlines)
-
-else:
-
-  # Front porch
-  ld([channel])                   #1 Advance to next sound channel
+  ld([channel])                   #1 TODO: Use fact that AC==[channel] already!!!
   anda([channelMask])             #2
   adda(1)                         #3
   ld(syncBits^hSync,OUT)          #4 Start horizontal pulse (4)
@@ -1824,6 +1735,302 @@ else:
   label('nopixels')
   nop()                           #40
 
+
+elif WITH_128K_BOARD:
+
+  assert pc() == 0x1fe
+  ld([ctrlBitsVideo],X)           #199
+  bra('sound3')                   #200,0 <New scan line start>
+  align(0x100, size=0x100)
+  ctrl(X)                         #1 Reset banking to page1.
+
+  # Back porch A: first of 4 repeated scan lines
+  # - Fetch next Yi and store it for retrieval in the next scan lines
+  # - Calculate Xi from dXi, but there is no cycle time left to store it as well
+  label('videoA')
+  ld('videoB')                    #29 1st scanline of 4 (always visible)
+  st([nextVideo])                 #30
+  ld(videoTable>>8,Y)             #31
+  ld([videoY],X)                  #32
+  ld([Y,X])                       #33
+  st([Y,Xpp])                     #34 Just X++
+  st([frameY])                    #35
+  ld([Y,X])                       #36
+  adda([frameX],X)                #37
+  label('pixels')
+  ld([frameY],Y)                  #38
+  ld(syncBits)                    #39
+
+  # Stream 160 pixels from memory location <Yi,Xi> onwards
+  # Superimpose the sync signal bits to be robust against misprogramming
+  for i in range(qqVgaWidth):
+    ora([Y,Xpp],OUT)              #40-199 Pixel burst
+  ld(syncBits,OUT)                #0 <New scan line start> Back to black
+
+  # Front porch
+  ld([channel])                   #1 Advance to next sound channel
+  label('sound3')                 # Return from vCPU interpreter
+  anda([channelMask])             #2
+  adda(1)                         #3
+  ld(syncBits^hSync,OUT)          #4 Start horizontal pulse
+
+  # Horizontal sync and sound channel update for scanlines outside vBlank
+  label('sound2')
+  st([channel],Y)                 #5
+  ld(0x7f)                        #6
+  anda([Y,oscL])                  #7
+  adda([Y,keyL])                  #8
+  st([Y,oscL])                    #9
+  anda(0x80,X)                    #10
+  ld([X])                         #11
+  adda([Y,oscH])                  #12
+  adda([Y,keyH])                  #13
+  st([Y,oscH] )                   #14
+  anda(0xfc)                      #15
+  xora([Y,wavX])                  #16
+  ld(AC,X)                        #17
+  ld([Y,wavA])                    #18
+  ld(soundTable>>8,Y)             #19
+  adda([Y,X])                     #20
+  bmi(pc()+3)                     #21
+  bra(pc()+3)                     #22
+  anda(63)                        #23
+  ld(63)                          #23
+  adda([sample])                  #24
+  st([sample])                    #25
+
+  ld([xout])                      #26 Gets copied to XOUT
+  bra([nextVideo])                #27
+  ld(syncBits,OUT)                #28 End horizontal pulse
+
+  # Back porch B: second of 4 repeated scan lines
+  # - Recompute Xi from dXi and store for retrieval in the next scan lines
+  label('videoB')
+  ld('videoC')                    #29 2nd scanline of 4
+  st([nextVideo])                 #30
+  ld(videoTable>>8,Y)             #31
+  ld([videoY])                    #32
+  adda(1,X)                       #33
+  ld([frameX])                    #34
+  adda([Y,X])                     #35
+  bra([videoModeB])               #36
+  st([frameX],X)                  #37 Store in RAM and X
+
+  # Back porch C: third of 4 repeated scan lines
+  # - Nothing new to for video do as Yi and Xi are known,
+  # - This is the time to emit and reset the next sound sample
+  label('videoC')
+  ld('videoD')                    #29 3rd scanline of 4
+  st([nextVideo])                 #30
+  ld([sample])                    #31 New sound sample is ready (didn't fit in audio loop)
+  ora(0x0f)                       #32
+  anda([xoutMask])                #33
+  st([xout])                      #34 Update [xout] with new sample (4 channels just updated)
+  st(sample, [sample])            #35 Reset for next sample
+  bra([videoModeC])               #36
+  ld([frameX],X)                  #37
+
+  # Back porch D: last of 4 repeated scan lines
+  # - Calculate the next frame index
+  # - Decide if this is the last line or not
+  label('videoD')                 # Default video mode
+  ld([frameX], X)                 #29 4th scanline of 4
+  ld([videoY])                    #30
+  suba((120-1)*2)                 #31
+  beq('.lastpixels#34')           #32
+  adda(120*2)                     #33 More pixel lines to go
+  st([videoY])                    #34
+  ld('videoA')                    #35
+  bra([videoModeD])               #36
+  st([nextVideo])                 #37
+
+  label('.lastpixels#34')
+  if soundDiscontinuity == 1:
+    st(sample, [sample])          #34 Sound continuity
+  else:
+    nop()                         #34
+  ld('videoE')                    #35 No more pixel lines to go
+  bra([videoModeD])               #36
+  st([nextVideo])                 #37
+
+  # Back porch "E": after the last line
+  # - Go back and and enter vertical blank (program page 2)
+  label('videoE') # Exit visible area
+  ld(hi('vBlankStart'),Y)         #29 Return to vertical blank interval
+  jmp(Y,'vBlankStart')            #30
+  ld(syncBits)                    #31
+
+  # Video mode that blacks out one or more pixel lines from the top of screen.
+  # This yields some speed, but also frees up screen memory for other purposes.
+  # Note: Sound output becomes choppier the more pixel lines are skipped
+  # Note: The vertical blank driver leaves 0x80 behind in [videoSync1]
+  label('videoF')
+  ld([videoSync1])                #29 Completely black pixel line
+  adda(0x80)                      #30
+  st([videoSync1],X)              #31
+  ld([frameX])                    #32
+  suba([X])                       #33 Decrements every two VGA scanlines
+  beq('.videoF#36')               #34
+  st([frameX])                    #35
+  bra('nopixels')                 #36
+  label('.videoF#36')
+  ld('videoA')                    #36,37 Transfer to visible screen area
+  st([nextVideo])                 #37
+  #
+  # Alternative for pixel burst: faster application mode
+  label('nopixels')
+  ld([ctrlBitsCopy],X)            #38
+  ctrl(X)                         #39
+  runVcpu(199-40,
+          'ABCD line 40-520',
+          returnTo=0x1fe)         #40 Application interpreter (black scanlines)
+
+else:  # NORMAL VIDEO CODE
+
+  assert pc() == 0x1ff
+  bra('sound3')                   #200,0 <New scan line start>
+  align(0x100, size=0x100)
+  ld([channel])                   #1 AC already contains [channel]
+
+  # Back porch A: first of 4 repeated scan lines
+  # - Fetch next Yi and store it for retrieval in the next scan lines
+  # - Calculate Xi from dXi, but there is no cycle time left to store it as well
+  label('videoA')
+  ld('videoB')                    #29 1st scanline of 4 (always visible)
+  st([nextVideo])                 #30
+  ld(videoTable>>8,Y)             #31
+  ld([videoY],X)                  #32
+  ld([Y,X])                       #33
+  st([Y,Xpp])                     #34 Just X++
+  st([frameY])                    #35
+  ld([Y,X])                       #36
+  adda([frameX],X)                #37
+  label('pixels')
+  ld([frameY],Y)                  #38
+  ld(syncBits)                    #39
+
+  # Stream 160 pixels from memory location <Yi,Xi> onwards
+  # Superimpose the sync signal bits to be robust against misprogramming
+  for i in range(qqVgaWidth):
+    ora([Y,Xpp],OUT)              #40-199 Pixel burst
+  ld(syncBits,OUT)                #0 <New scan line start> Back to black
+
+  # Front porch
+  ld([channel])                   #1 Advance to next sound channel
+  label('sound3')                 # Return from vCPU interpreter
+  anda([channelMask])             #2
+  adda(1)                         #3
+  ld(syncBits^hSync,OUT)          #4 Start horizontal pulse
+
+  # Horizontal sync and sound channel update for scanlines outside vBlank
+  label('sound2')
+  st([channel],Y)                 #5
+  ld(0x7f)                        #6
+  anda([Y,oscL])                  #7
+  adda([Y,keyL])                  #8
+  st([Y,oscL])                    #9
+  anda(0x80,X)                    #10
+  ld([X])                         #11
+  adda([Y,oscH])                  #12
+  adda([Y,keyH])                  #13
+  st([Y,oscH] )                   #14
+  anda(0xfc)                      #15
+  xora([Y,wavX])                  #16
+  ld(AC,X)                        #17
+  ld([Y,wavA])                    #18
+  ld(soundTable>>8,Y)             #19
+  adda([Y,X])                     #20
+  bmi(pc()+3)                     #21
+  bra(pc()+3)                     #22
+  anda(63)                        #23
+  ld(63)                          #23(!)
+  adda([sample])                  #24
+  st([sample])                    #25
+
+  ld([xout])                      #26 Gets copied to XOUT
+  bra([nextVideo])                #27
+  ld(syncBits,OUT)                #28 End horizontal pulse
+
+  # Back porch B: second of 4 repeated scan lines
+  # - Recompute Xi from dXi and store for retrieval in the next scan lines
+  label('videoB')
+  ld('videoC')                    #29 2nd scanline of 4
+  st([nextVideo])                 #30
+  ld(videoTable>>8,Y)             #31
+  ld([videoY])                    #32
+  adda(1,X)                       #33
+  ld([frameX])                    #34
+  adda([Y,X])                     #35
+  bra([videoModeB])               #36
+  st([frameX],X)                  #37 Store in RAM and X
+
+  # Back porch C: third of 4 repeated scan lines
+  # - Nothing new to for video do as Yi and Xi are known,
+  # - This is the time to emit and reset the next sound sample
+  label('videoC')
+  ld('videoD')                    #29 3rd scanline of 4
+  st([nextVideo])                 #30
+  ld([sample])                    #31 New sound sample is ready (didn't fit in audio loop)
+  ora(0x0f)                       #32
+  anda([xoutMask])                #33
+  st([xout])                      #34 Update [xout] with new sample (4 channels just updated)
+  st(sample, [sample])            #35 Reset for next sample
+  bra([videoModeC])               #36
+  ld([frameX],X)                  #37
+
+  # Back porch D: last of 4 repeated scan lines
+  # - Calculate the next frame index
+  # - Decide if this is the last line or not
+  label('videoD')                 # Default video mode
+  ld([frameX], X)                 #29 4th scanline of 4
+  ld([videoY])                    #30
+  suba((120-1)*2)                 #31
+  beq('.lastpixels#34')           #32
+  adda(120*2)                     #33 More pixel lines to go
+  st([videoY])                    #34
+  ld('videoA')                    #35
+  bra([videoModeD])               #36
+  st([nextVideo])                 #37
+
+  label('.lastpixels#34')
+  if soundDiscontinuity == 1:
+    st(sample, [sample])          #34 Sound continuity
+  else:
+    nop()                         #34
+  ld('videoE')                    #35 No more pixel lines to go
+  bra([videoModeD])               #36
+  st([nextVideo])                 #37
+
+  # Back porch "E": after the last line
+  # - Go back and and enter vertical blank (program page 2)
+  label('videoE') # Exit visible area
+  ld(hi('vBlankStart'),Y)         #29 Return to vertical blank interval
+  jmp(Y,'vBlankStart')            #30
+  ld(syncBits)                    #31
+
+  # Video mode that blacks out one or more pixel lines from the top of screen.
+  # This yields some speed, but also frees up screen memory for other purposes.
+  # Note: Sound output becomes choppier the more pixel lines are skipped
+  # Note: The vertical blank driver leaves 0x80 behind in [videoSync1]
+  label('videoF')
+  ld([videoSync1])                #29 Completely black pixel line
+  adda(0x80)                      #30
+  st([videoSync1],X)              #31
+  ld([frameX])                    #32
+  suba([X])                       #33 Decrements every two VGA scanlines
+  beq('.videoF#36')               #34
+  st([frameX])                    #35
+  bra('nopixels')                 #36
+  label('.videoF#36')
+  ld('videoA')                    #36,37 Transfer to visible screen area
+  st([nextVideo])                 #37
+  #
+  # Alternative for pixel burst: faster application mode
+  label('nopixels')
+  runVcpu(200-38, 'ABCD line 40-520',
+          returnTo=0x1ff)         #38 Application interpreter (black scanlines)
+
+
 #-----------------------------------------------------------------------
 #
 #  $0300 ROM page 3: Application interpreter primary page
@@ -1876,7 +2083,7 @@ bgt(pc()&255)                   #4 Resync
 suba(1)                         #5
 ld(hi('vBlankStart'),Y)         #6
 jmp(Y,[vReturn])                #7 To video driver
-ld(0)                           #8 AC should be 0 already. Still..
+ld([channel])                   #8 with channel in AC
 assert vCPU_overhead ==          9
 
 # Instruction LDWI: Load immediate word constant (vAC=D), 20 cycles
@@ -2588,14 +2795,14 @@ fillers(until=0xa7)
 #       vAC
 
 label('SYS_Random_34')
-ld([frameCount])                #15
+ld([vTicks])                    #15
 xora([entropy+1])               #16
-xora([serialRaw])               #17
+ld(1,Y)                         #17
 adda([entropy+0])               #18
 st([entropy+0])                 #19
 st([vAC+0])                     #20
-adda([entropy+2])               #21
-st([entropy+2])                 #22
+adda([Y,entropy2])              #21
+st([Y,entropy2])                #22
 bmi('.sysRnd0')                 #23
 bra('.sysRnd1')                 #24
 xora(64+16+2+1)                 #25
@@ -4097,7 +4304,43 @@ beq('sysEx#22')                     #20
 ld([vAC])                           #21 load low byte of ctrl code in delay slot
 anda(0xfc)                          #22 sanitize normal ctrl code
 st([Y,ctrlBits])                    #23 store in ctrlBits
-if not WITH_512K_BOARD:
+if WITH_512K_BOARD:
+  ld(AC,X)                            #24
+  ld([vAC+1],Y)                       #25
+  ctrl(Y,X)                           #26 issue ctrl code
+  label('sysEx#27') 
+  ld(hi('REENTER'),Y)                 #27
+  jmp(Y,'REENTER')                    #28
+  ld(-32/2)                           #29
+  label('sysEx#22')
+  anda(0xfc,X)                        #22 special ctrl code
+  ld([vAC+1],Y)                       #23
+  xora(0xf0)                          #24
+  bne('sysEx#27')                     #25
+  ctrl(Y,X)                           #26 issue ctrl code
+  ld(hi('sysEx#30'),Y)                #27
+  jmp(Y,'sysEx#30')                   #28 jump to a place with more space
+  ld([vAC+1])                         #29
+elif WITH_128K_BOARD:
+  st([ctrlBitsCopy],X)                #24
+  anda(0x3c)                          #25
+  ora(0x40)                           #26
+  st([ctrlBitsVideo])                 #27
+  label('sysEx#28')
+  ld([vAC+1],Y)                       #28
+  ctrl(Y,X)                           #29 issue ctrl code
+  ld([ctrlBitsCopy])                  #30 always read after ctrl
+  ld(hi('REENTER'),Y)                 #31
+  jmp(Y,'REENTER')                    #32
+  ld(-36/2)                           #33
+  label('sysEx#22')
+  anda(0xfc,X)                        #22 special ctrl code
+  ld([vAC+1],Y)                       #23
+  ctrl(Y,X)                           #24 issue special code
+  ld([ctrlBitsCopy],X)                #25 from last time (hopefully)
+  bra('sysEx#28')                     #26
+  nop()                               #27
+else:
   st([vTmp])                          #24 store in vTmp
   bra('sysEx#27')                     #25 jump to issuing normal ctrl code
   ld([vAC+1],Y)                       #26 load high byte of ctrl code in delay slot
@@ -4115,23 +4358,6 @@ if not WITH_512K_BOARD:
   ld(hi('REENTER'),Y)                 #31
   jmp(Y,'REENTER')                    #32
   ld(-36/2)                           #33
-else:
-  ld(AC,X)                            #24
-  ld([vAC+1],Y)                       #25
-  ctrl(Y,X)                           #26 issue ctrl code
-  label('sysEx#27') 
-  ld(hi('REENTER'),Y)                 #27
-  jmp(Y,'REENTER')                    #28
-  ld(-32/2)                           #29
-  label('sysEx#22')
-  ld(AC,X)                            #22 special ctrl code
-  ld([vAC+1],Y)                       #23
-  xora(0xf0)                          #24
-  bne('sysEx#27')                     #25
-  ctrl(Y,X)                           #26 issue ctrl code
-  ld(hi('sysEx#30'),Y)                #27
-  jmp(Y,'sysEx#30')                   #28 jump to a place with more space
-  ld([vAC+1])                         #29
 
   
 #-----------------------------------------------------------------------
@@ -4430,7 +4656,7 @@ ld(hi('v6502_ENTER'))           #6 Set entry point to before 'fetch'
 st([vCpuSelect])                #7
 ld(hi('vBlankStart'),Y)         #8
 jmp(Y,[vReturn])                #9 To video driver
-ld(0)                           #10
+ld([channel])                   #10
 assert v6502_overhead ==         11
 
 # Immediate Mode: #$FF -- 36 cycles
@@ -4671,7 +4897,7 @@ ld(hi('v6502_RESUME'))          #6 Set entry point to before 'execute'
 st([vCpuSelect])                #7
 ld(hi('vBlankStart'),Y)         #8
 jmp(Y,[vReturn])                #9 To video driver
-ld(0)                           #10
+ld([channel])                   #10
 assert v6502_overhead ==         11
 
 align(0x100,size=0x100)
@@ -5528,35 +5754,35 @@ align(0x100, size=0x100)
 #-----------------------------------------------------------------------
 
 # Check if an IRQ handler is defined
-label('vBlankFirst#78')
-ld([Y,vIRQ_v5])                 #78
-ora([Y,vIRQ_v5+1])              #79
-bne('vBlankFirst#82')           #80
-ld([vPC])                       #81
-runVcpu(186-82-extra,           #82 Application cycles (scan line 0)
+label('vBlankFirst#75')
+ld([Y,vIRQ_v5])                 #75
+ora([Y,vIRQ_v5+1])              #76
+bne('vBlankFirst#79')           #77
+ld([vPC])                       #78
+runVcpu(190-79-extra,           #79 Application cycles (scan line 0)
     '---D line 0 timeout but no irq',
-    returnTo='vBlankFirst#186')
+    returnTo='vBlankFirst#190')
 
-label('vBlankFirst#82')
-st([vIrqSave+0])                #82 Save vPC
-ld([vPC+1])                     #83
-st([vIrqSave+1])                #84
-ld([vAC])                       #85 Save vAC
-st([vIrqSave+2])                #86
-ld([vAC+1])                     #87
-st([vIrqSave+3])                #88
-ld([Y,vIRQ_v5])                 #89 Set vPC to vIRQ
-suba(2)                         #90
-st([vPC])                       #91
-ld([Y,vIRQ_v5+1])               #92
-st([vPC+1])                     #93
-ld([vCpuSelect])                #94 Save vCpuSelect
-st([vIrqSave+4])                #95
-ld(hi('ENTER'))                 #96 Set vCpuSelect to ENTER (=regular vCPU)
-st([vCpuSelect])                #97
-runVcpu(186-98-extra,           #98 Application cycles (scan line 0)
+label('vBlankFirst#79')
+st([vIrqSave+0])                #79 Save vPC
+ld([vPC+1])                     #80
+st([vIrqSave+1])                #81
+ld([vAC])                       #82 Save vAC
+st([vIrqSave+2])                #83
+ld([vAC+1])                     #84
+st([vIrqSave+3])                #85
+ld([Y,vIRQ_v5])                 #86 Set vPC to vIRQ
+suba(2)                         #87
+st([vPC])                       #88
+ld([Y,vIRQ_v5+1])               #89
+st([vPC+1])                     #90
+ld([vCpuSelect])                #91 Save vCpuSelect
+st([vIrqSave+4])                #92
+ld(hi('ENTER'))                 #93 Set vCpuSelect to ENTER (=regular vCPU)
+st([vCpuSelect])                #94
+runVcpu(190-95-extra,           #95 Application cycles (scan line 0)
     '---D line 0 timeout with irq',
-    returnTo='vBlankFirst#186')
+    returnTo='vBlankFirst#190')
 
 # vRTI immediate resume
 label('vRTI#25')
@@ -6131,7 +6357,7 @@ bgt(pc()&255)                   #4
 suba(1)                         #5
 ld(hi('vBlankStart'),Y)         #6
 jmp(Y,[vReturn])                #7
-ld(0)                           #8
+ld([channel])                   #8
 
 #-----------------------------------------------------------------------
 # sys_Multiply_s16, sum:s16 = x:s16 * y:s16
@@ -6434,7 +6660,7 @@ bgt(pc()&255)                   #4
 suba(1)                         #5
 ld(hi('vBlankStart'),Y)         #6
 jmp(Y,[vReturn])                #7
-ld(0)                           #8
+ld([channel])                   #8
 
 #-----------------------------------------------------------------------
 # Micro FSM instructions
@@ -6965,7 +7191,7 @@ bgt(pc()&255)                   #4
 suba(1)                         #5
 ld(hi('vBlankStart'),Y)         #6
 jmp(Y,[vReturn])                #7
-ld(0)                           #8
+ld([channel])                   #8
 
 #-----------------------------------------------------------------------
 # Implementation of long and fast conditional branches
@@ -7166,7 +7392,6 @@ define('sysFn',      sysFn)
 for i in range(8):
   define('sysArgs%d' % i, sysArgs+i)
 define('soundTimer', soundTimer)
-define('ledTimer',   ledTimer)
 define('ledState_v2',ledState_v2)
 define('ledTempo',   ledTempo)
 define('userVars',   userVars)
@@ -7175,6 +7400,7 @@ define('userVars_v5',userVars_v5)
 define('userVars_v6',userVars_v6)
 define('userVars_v7',userVars_v7)
 define('videoTable', videoTable)
+define('ledTimer',   ledTimer)
 define('vIRQ_v5',    vIRQ_v5)
 define('ctrlBits_v5',ctrlBits)
 define('videoTop_v5',videoTop_v5)

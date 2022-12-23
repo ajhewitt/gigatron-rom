@@ -8,9 +8,8 @@ gcl0x
 
 { No need for romType check because Reset.gcl gets hard-compiled in  }
 
-_ledTimer=$2d
-
-$1f8 CtrlBits=
+\ledTimer    ledTimer=
+\ctrlBits_v5 CtrlBits=
 
 
 { CheckMemory }
@@ -300,7 +299,7 @@ $466 {4: D-4} SetupChannel! {was: $47e {4: D-5} SetupChannel!}
 
 { Restart blinkenlights }
 \ledState_v2, 128&              {Check if sequencer still running}
-[if=0 \ledState_v2. \ledTimer.] {For continuity only restart when paused}
+[if=0 \ledState_v2. ledTimer.]  {For continuity only restart when paused}
 9 \ledTempo.                    {6.0 Hz ( = 60/(9+1)), was 5.5 Hz}
 
 {

@@ -1,6 +1,6 @@
 {
-    "SYS_Multiply_s16_v7_34"      : "0x9e",
-    "SYS_Divide_s16_v7_34"        : "0xa1",
+    "SYS_Multiply_s16_v7_34"      : "0x009e",
+    "SYS_Divide_s16_v7_34"        : "0x00a1",
 
     "JEQ_v7"           : "0x033f",
     "JGT_v7"           : "0x034d",
