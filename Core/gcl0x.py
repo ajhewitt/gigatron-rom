@@ -342,7 +342,10 @@ class Program:
     # Convert maximum Gigatron cycles to the negative of excess ticks
     if con & 1:
       self.error('Invalid value (must be even, got %d)' % con)
-    extraTicks = con//2 - symbol('maxTicks')
+    # If the maxTicks symbols is not defined, use 14.
+    # All ROMs should ensure that maxTicks=14 works here.
+    maxTicks = symbol('maxTicks') or 14
+    extraTicks = con//2 - 14
     return 256 - extraTicks if extraTicks > 0 else 0
 
   def emitQuote(self, var):

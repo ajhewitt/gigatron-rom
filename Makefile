@@ -5,7 +5,7 @@
 #-----------------------------------------------------------------------
 
 # Latest development version as default target
-DEV:=dev7.rom
+DEV:=dev7.rom dev128k7.rom dev512k7.rom
 
 # Emulators open gigatron.rom as their ROM image
 gigatron.rom: $(DEV)

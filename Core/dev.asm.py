@@ -404,10 +404,11 @@ if WITH_128K_BOARD:
 #   and userVars_vx if they avoid using ROM features
 #   that need them. This is considerably riskier.
 userVars        = zpByte(0)
+
+# Start of safely usable bytes under ROMv4
 userVars_v4     = zpByte(0)
-# Saved vCPU context during vIRQ
-# Code that uses vCPU interrupts should not use these locations.
-vIrqSave        = zpByte(6)
+vIrqSave        = zpByte(5)  # saved vcpu context during virq
+vTmp0           = zpByte(1)  # scratch register used by v7 ops
 # Start of safely usable bytes under ROMv5
 userVars_v5     = zpByte(0)
 # Start of safely usable bytes under ROMv6
@@ -463,9 +464,9 @@ screenMemory = 0x0800   # Default start of screen memory: 0x0800 to 0x7fff
 #  Application definitions
 #-----------------------------------------------------------------------
 
-maxTicks = 28//2                 # Duration of vCPU's slowest virtual opcode (ticks)
-minTicks = 14//2                 # vcPU's fastest instruction
-v6502_maxTicks = 38//2           # Max duration of v6502 processing phase (ticks)
+maxTicks = 30//2                # Duration of vCPU's slowest virtual opcode (ticks)
+minTicks = 14//2                # vcPU's fastest instruction
+v6502_maxTicks = 38//2          # Max duration of v6502 processing phase (ticks)
 
 runVcpu_overhead = 5            # Caller overhead (cycles)
 vCPU_overhead = 9               # Callee overhead of jumping in and out (cycles)
@@ -860,7 +861,7 @@ label('SYS_Multiply_s16_v6_66')
 label('SYS_Multiply_s16_v7_34')
 ld(hi('sys_Multiply_s16'),Y)    #15 slot 0x9e
 jmp(Y,'sys_Multiply_s16')       #16
-ld([sysArgs+6])                 #17 load mask.lo
+nop()
 
 #-----------------------------------------------------------------------
 # Extension SYS_Divide_s16_v6_80: 15 bit division
@@ -884,7 +885,7 @@ label('SYS_Divide_s16_v6_80')
 label('SYS_Divide_u16_v7_34')
 ld(hi('sys_Divide_u16'),Y)      #15 slot 0xa1
 jmp(Y,'sys_Divide_u16')         #16
-ld([sysArgs+4])                 #17
+nop()
 
 #-----------------------------------------------------------------------
 # More placeholders for future SYS functions
@@ -2131,10 +2132,9 @@ st([vAC+1])                     #13
 ld([vPC])                       #14 Advance vPC one more
 adda(1)                         #15
 st([vPC])                       #16
-ld(-20/2)                       #17
-bra('NEXT')                     #18
-#dummy()                        #19 Overlap
-#
+bra('NEXTY')                    #18
+ld(-20/2)                       #18
+
 # Instruction LD: Load byte from zero page (vAC=[D]), 22 cycles
 label('LD')
 ld(AC,X)                        #10,19
@@ -2183,56 +2183,76 @@ ld(hi('PREFIX35_PAGE'),Y)       #11
 jmp(Y,AC)                       #12
 ld([vPC+1],Y)                   #13
 
-# Instruction slot (39 ..)
-ld(hi('NEXTY'),Y)               #10
-jmp(Y,'NEXTY')                  #11
-ld(-14//2)                      #12
+# Instruction MOVQB (39 ii vv), 28 cycles
+# * Store immediate ii into byte [vv]:=ii
+label('MOVQB_v7')
+ld(hi('movqb#13'),Y)            #10
+jmp(Y,'movqb#13')               #11
 
-# Instruction slot (3c ..)
-ld(hi('NEXTY'),Y)               #10
-jmp(Y,'NEXTY')                  #11
-ld(-14//2)                      #12
+# Instruction MOVQW (3b ii vv), 30 cycles
+# * Store immediate ii into word [vv]:=ii [vv+1]:=0
+label('MOVQW_v7')
+ld(hi('movqw#13'),Y)            #10,12
+jmp(Y,'movqw#13')               #11
+
+# Instruction DEEKA (3d xx), 30 cycles
+# * Load word at location [vAC] and store into [xx]
+# * Uses vTmp0 as a scratch register
+label('DEEKA_v7')
+ld(hi('deeka#13'),Y)            #10,12
+jmp(Y,'deeka#13')               #11
 
 # Instruction JEQ (3f ll hh), 26 cycles (was EQ)
 # * Original idea from at67
 # * Branch if zero (if(vACL==0)vPC=hhll[+2])
 label('EQ')
 label('JEQ_v7')
-ld(hi('jeq#13'),Y)              #10
+ld(hi('jeq#13'),Y)              #10,12
 jmp(Y,'jeq#13')                 #11
 
-# Instruction slot (41 ..)
-ld(hi('NEXTY'),Y)               #10,12
-jmp(Y,'NEXTY')                  #11
-ld(-14//2)                      #12
+# Instruction DEEKV (41 vv), 28 cycles
+# * Original idea from at67
+# * shortcut for LDW(vv);DEEK()
+label('DEEKV_v7')
+ld(hi('deekv#13'),Y)            #10,12
+jmp(Y,'deekv#13')               #11
+st([vTmp])                      #12
 
-# Instruction slot (44 ..)
-ld(hi('NEXTY'),Y)               #10
-jmp(Y,'NEXTY')                  #11
-ld(-14//2)                      #12
+# Instruction DOKEQ (44 ii), 22 cycles
+# * Store immediate ii into word pointed by vAC
+label('DOKEQ_v7')
+ld(hi('dokeq#13'),Y)            #10,12
+jmp(Y,'dokeq#13')               #11
 
-# Instruction slot (47 ..)
-ld(hi('NEXTY'),Y)               #10
-jmp(Y,'NEXTY')                  #11
-ld(-14//2)                      #12
+# Instruction POKEQ (46 ii), 20 cycles
+# * Store immediate ii into byte pointed by vAC
+label('POKEQ_v7')
+ld(hi('pokeq#13'),Y)            #10,12
+jmp(Y,'pokeq#13')               #11
+
+# Instruction POKEA (48 xx), 28 cycles
+# * Store word [xx] at location [vAC]
+label('POKEA_v7')
+ld(hi('pokea#13'),Y)            #10,12
+jmp(Y,'pokea#13')               #11
 
 # Instruction slot (4a ..)
-ld(hi('NEXTY'),Y)               #10
-jmp(Y,'NEXTY')                  #11
-ld(-14//2)                      #12
+nop()                           #10,12
+nop()                           #11
+nop()                           #11
 
 # Instruction JGT (4d ll hh), 26 cycles (was GT)
-# * Original idea from at67
 # * Branch if positive (if(vACL>0)vPC=hhll[+2])
+# * Original idea from at67
 label('GT')
 label('JGT_v7')
-ld(hi('jgt#13'),Y)              #10
+ld(hi('jgt#13'),Y)              #10,12
 jmp(Y,'jgt#13')                 #11
 ld([vAC+1])                     #12
 
 # Instruction JLT (50 ll hh), 26 cycles (was LT)
-# * Original idea from at67
 # * Branch if negative (if(vACL<0)vPC=hhll[+2])
+# * Original idea from at67
 label('LT')
 label('JLT_v7')
 ld(hi('jlt#13'),Y)              #10
@@ -2240,8 +2260,8 @@ jmp(Y,'jlt#13')                 #11
 ld([vAC+1])                     #12
 
 # Instruction JGE (53 ll hh), 26 cycles (was GE)
-# * Original idea from at67
 # * Branch if positive or zero (if(vACL>=0)vPC=hhll[+2])
+# * Original idea from at67
 label('GE')
 label('JGE_v7')
 ld(hi('jge#13'),Y)              #10
@@ -2249,8 +2269,8 @@ jmp(Y,'jge#13')                 #11
 ld([vAC+1])                     #12
 
 # Instruction JLE (56 ll hh), 26 cycles (was LE)
-# * Original idea from at67
 # * Branch if negative or zero (if(vACL<=0)vPC=hhll[+2])
+# * Original idea from at67
 label('JLE_v7')
 ld(hi('jle#13'),Y)              #10
 jmp(Y,'jle#13')                 #11
@@ -2278,25 +2298,33 @@ ld(hi('pop#13'),Y)              #10
 jmp(Y,'pop#13')                 #11
 ld([vSP],X)                     #12
 
-# Instruction slot (66 ..)
-ld(hi('NEXTY'),Y)               #10
-jmp(Y,'NEXTY')                  #11
-ld(-14//2)                      #12
+# Instruction ADDV (66 vv), 30 cycles
+# * Add vAC to word [vv]
+label('ADDV_v7')
+ld(hi('addv#13'),Y)             #10,12
+jmp(Y,'addv#13')                #11
 
-# Instruction slot (69 ..)
-ld(hi('NEXTY'),Y)               #10
-jmp(Y,'NEXTY')                  #11
-ld(-14//2)                      #12
+# Instruction SUBV (68 vv), 30 cycles
+# * Subtract vAC from word [vv]
+label('SUBV_v7')
+ld(hi('subv#13'),Y)             #10,12
+jmp(Y,'subv#13')                #11
+
+# Instruction slot (6a ..)
+nop()                           #10,12
+nop()                           #11
 
 # Instruction slot (6c ..)
-ld(hi('NEXTY'),Y)               #10
-jmp(Y,'NEXTY')                  #11
-ld(-14//2)                      #12
+nop()                           #10,12
+nop()                           #11
 
-# Instruction slot (6f ..)
-ld(hi('NEXTY'),Y)               #10
-jmp(Y,'NEXTY')                  #11
-ld(-14//2)                      #12
+# Instruction slot (6e ..)
+nop()                           #10,12
+nop()                           #11
+
+# Instruction slot (70 ..)
+nop()                           #10,12
+nop()                           #11
 
 # Instruction JNE (72 ii jj), 26 cycles (was NE)
 # * Original idea from at67
@@ -2313,18 +2341,20 @@ ld(hi('push#13'),Y)             #10
 jmp(Y,'push#13')                #11
 ld(0,Y)                         #12
 
-# Instruction slot (78 ..)
-bra('REENTER')                  #10
-ld(-14//2)                      #11
+# Instruction LDNI (78 xx), 16 cycles
+# * Load negative constant vAC:=0xffxx
+label('LDNI_v7')
+st([vAC])                       #10
+ld(0xff)                        #11
+st([vAC+1])                     #12
+bra('NEXTY')                    #13
+ld(-16/2)                       #14
 
-# Instruction slot (7a ..)
-bra('REENTER')                  #10
-ld(-14//2)                      #11
-
-# Instruction slot (7c ..)
-ld(hi('NEXTY'),Y)               #10
-jmp(Y,'NEXTY')                  #11
-ld(-14//2)                      #12
+# Instruction DOKEA (7d xx), 28 cycles
+# * Store word [xx] at location [vAC]
+label('DOKEA_v7')
+ld(hi('dokea#13'),Y)            #10
+jmp(Y,'dokea#13')               #11+overlap
 
 # Instruction LUP: ROM lookup (vAC=ROM[vAC+D]), 26 cycles
 label('LUP')
@@ -2416,9 +2446,9 @@ ld(hi('.sys#16'),Y)              #13,12
 jmp(Y,'.sys#16')                 #14
 
 # Instruction slot (b1 ..)
-ld(hi('NEXTY'),Y)                #10,15
-jmp(Y,'NEXTY')                   #11
-ld(-14//2)                       #12
+nop()                            #10,15
+nop()                            #11
+nop()                            #12
 
 # Instruction SYS: Native call, <=256 cycles (<=128 ticks, in reality less)
 #
@@ -2481,30 +2511,50 @@ jmp(Y,'def#13')                 #11
 # Instruction CALL: Goto address and remember vPC (vLR,vPC=vPC+2,[D]+256*[D+1]-2), 26 cycles
 label('CALL')
 st([vTmp])                      #10,12
-ld([vPC])                       #11
-adda(2)                         #12 Point to instruction after CALL
-st([vLR])                       #13
-ld([vPC+1])                     #14
-st([vLR+1])                     #15
-ld([vTmp],X)                    #16
-ld([X])                         #17
-suba(2)                         #18 Because NEXT will add 2
-st([vPC])                       #19
-ld([vTmp])                      #20
-adda(1,X)                       #21
-ld([X])                         #22
-st([vPC+1],Y)                   #23
-bra('NEXT')                     #24
-ld(-26/2)                       #25
+ld(hi('call#14'),Y)             #11
+jmp(Y,'call#14')                #12
+adda(1,X)                       #13
+
+# Instruction CMPWS (d3 vv), 26-30 cycles
+# * Signed compare of vAC and [vv]. Faster than CMPHS+SUBW
+label('CMPWS_v7')
+ld(hi('cmpws#13'),Y)            #10
+jmp(Y,'cmpws#13')               #11
+st([vTmp])                      #12
+
+# Instruction CMPWU (d6 vv), 26-30 cycles
+# * Unsigned compare of vAC and [vv]. Faster than CMPHU+SUBW
+label('CMPWU_v7')
+ld(hi('cmpwu#13'),Y)            #10
+jmp(Y,'cmpwu#13')               #11
+st([vTmp])                      #12
+
+# Instruction CMPIS (d9 ii), 22-30 cycles
+# * Signed compare of vAC and byte ii.
+label('CMPIS_v7')
+ld(hi('cmpis#13'),Y)            #10
+jmp(Y,'cmpis#13')               #11
+
+# Instruction CMPIU (db ii), 24-30 cycles
+# * Unsigned compare of vAC and byte ii.
+label('CMPIU_v7')
+ld(hi('cmpiu#13'),Y)            #10,12
+jmp(Y,'cmpiu#13')               #11
+
+# Instruction PEEKV (dd vv), 28 cycles
+# * Shortcut for LDW(vv);DEEK()
+label('PEEKV_v7')
+ld(hi('peekv#13'),Y)            #10,12
+jmp(Y,'peekv#13')               #11
 
 # Instruction ALLOC: Create or destroy stack frame (vSP+=D), 14 cycles
 label('ALLOC')
-ld(hi('alloc#13'),Y)            #10
+ld(hi('alloc#13'),Y)            #10,12
 jmp(Y,'alloc#13')               #11
 
-# Instruction slot (short)
-ld(hi('alloc#13'),Y)            #10
-jmp(Y,'alloc#13')               #11
+# Instruction slot (e1 ..)
+nop()                           #10
+nop()                           #11
 
 # The instructions below are all implemented in the second code page. Jumping
 # back and forth makes each 6 cycles slower, but it also saves space in the
@@ -2797,6 +2847,25 @@ st([vPC])                       #19
 ld(hi('NEXTY'),Y)               #20
 jmp(Y,'NEXTY')                  #21
 ld(-24//2)                      #22
+#
+# CALL implementation
+# - Displacing CALL adds 4 cycles.
+#   This is less critical when we have CALLI.
+label('call#14')
+ld([vPC])                       #14
+adda(2)                         #15 Point to instruction after CALL
+st([vLR])                       #16
+ld([vPC+1])                     #17
+st([vLR+1])                     #18
+ld([X])                         #19
+st([vPC+1])                     #20
+ld([vTmp],X)                    #21
+ld([X])                         #22
+suba(2)                         #23 Because NEXT will add 2
+st([vPC])                       #24
+ld(hi('REENTER'),Y)             #25
+jmp(Y,'REENTER')                #26
+ld(-30/2)                       #27
 
 
 
@@ -6652,29 +6721,37 @@ ld(-28/2)                       #27
 
 # MULW implementation
 label('mulw#3a')
-ld([vAC])                       #3
-st([sysArgs+2])                 #4
-ld([vAC+1])                     #5
-st([sysArgs+3])                 #6
-ld([sysArgs+6])                 #7
-adda(1,X)                       #8
-ld([X])                         #9
-st([sysArgs+1])                 #10
-ld([sysArgs+6],X)               #11
-ld([X])                         #12
-st([sysArgs+0])                 #13
-ld(0)                           #14
-st([sysArgs+4])                 #15
-st([sysArgs+5])                 #16
-ld(1)                           #17
-st([sysArgs+6])                 #18
-nop()                           #19
-ld('sysm#3a')                   #20
-st([fsmState])                  #21
-ld((pc()>>8)-1)                 #22
-st([vCpuSelect])                #23
+ld('sysm#3a')                   #3
+st([fsmState])                  #4
+ld(1)                           #5
+nop()                           #6
+label('mulw#7a')
+st([vTmp])                      #7
+ld([vAC])                       #8
+st([sysArgs+2])                 #9
+ld([vAC+1])                     #10
+st([sysArgs+3])                 #11
+ld([sysArgs+6])                 #12
+adda(1,X)                       #13
+ld([X])                         #14
+st([sysArgs+1])                 #15
+ld([sysArgs+6],X)               #16
+ld([X])                         #17
+st([sysArgs+0])                 #18
+ld(0)                           #19
+st([sysArgs+4])                 #20
+st([sysArgs+5])                 #21
+ld([vTmp])                      #22
+st([sysArgs+6])                 #23
 bra('NEXT')                     #24
 ld(-26/2)                       #25
+
+# RDIVU implementation
+label('rdivu#3a')
+ld('sysd#3a')                   #3
+st([fsmState])                  #4
+bra('mulw#7a')                  #5
+ld(16)                          #6
 
 
 
@@ -7103,12 +7180,18 @@ st([sysArgs+6])                 #20
 
 # Instruction slots
 
-fillers(until=0x3d)
+fillers(until=0x3b)
+
+# Instruction RDIVU (35 3b xx)
+# - Divide [xx] by vAC
+# - Trashes sysArgs[0..7]
+oplabel('RDIVU_v7')
+bra('fsm14op1#16')              #14
+ld('rdivu#3a')                  #15
 
 # Instruction MULW (35 3d xx)
 # - Multiply vAC by var [xx]
 # - Trashes sysArgs[0..7]
-# - Total time: 4 to 6 scanlines
 oplabel('MULW_v7')
 bra('fsm14op1#16')              #14
 ld('mulw#3a')                   #15
@@ -7182,9 +7265,27 @@ ld(hi('softReset#20'),Y)        #17
 jmp(Y,'softReset#20')           #18
 ld(0)                           #19
 
-# Instruction slots
+# Instruction DOKEI (35 62 ih il), 28 cycles
+# * Store immediate word ihil at location [vAC]
+# * Original idea from at67
+oplabel('DOKEI_v7')
+ld([Y,X])                       #14
+st([Y,Xpp])                     #15
+st([vTmp])                      #16 ih
+ld([Y,X])                       #17 il
+ld([vAC],X)                     #18
+ld([vAC+1],Y)                   #19
+st([Y,Xpp])                     #20
+ld([vTmp])                      #21 ih
+st([Y,X])                       #22
+ld([vPC])                       #23
+adda(2)                         #24
+st([vPC])                       #25
+ld(hi('NEXTY'),Y)               #26
+jmp(Y,'NEXTY')                  #27
+ld(-30//2)                      #28
 
-fillers(until=0x72)
+nop()
 
 # Instruction BNE (35 72 xx) [26 cycles]
 # * Branch if not zero (if(vACL!=0)vPCL=xx)
@@ -7204,6 +7305,30 @@ ld(hi('NEXTY'),Y)               #22
 jmp(Y,'NEXTY')                  #23
 ld(-26//2)                      #24
 
+nop()
+
+# Instruction NEGW (35 7e)
+# * Negate vAC := -vAC
+oplabel('NEGW')
+ld([vAC])                       #14
+xora(0xff)                      #15
+adda(1)                         #16
+st([vAC])                       #17
+beq(pc()+3)                     #18
+bra(pc()+3)                     #19
+ld(0)                           #20
+ld(0xff)                        #20!
+adda([vAC+1])                   #21
+xora(0xff)                      #22
+st([vAC+1])                     #23
+ld(hi('NEXTY'),Y)               #24
+jmp(Y,'NEXTY')                  #25
+ld(-28//2)                      #26
+
+
+
+
+
 # Instruction slots
 
 fillers(until=0xff)
@@ -7215,25 +7340,376 @@ fillers(until=0xff)
 #
 #-----------------------------------------------------------------------
 
-fillers(until=0xff)
-label('FSM17_ENTER')
-bra(pc()+4)                     #0 ENTER
 align(0x100, size=0x100)
-bra([fsmState])                 #1
-assert (pc() & 255) == (symbol('NEXT') & 255)
-label('FSM17_NEXT')
-adda([vTicks])                  #0 NEXT
-bge([fsmState])                 #1
-st([vTicks])                    #2
-adda(maxTicks)                  #3
-bgt(pc()&255)                   #4
-suba(1)                         #5
-ld(hi('vBlankStart'),Y)         #6
-jmp(Y,[vReturn])                #7
-ld([channel])                   #8
+
+
+# POKEA implementation
+label('pokea#13')
+ld(AC,X)                        #13
+ld([X])                         #14
+ld([vAC],X)                     #15
+ld([vAC+1],Y)                   #16
+st([Y,Xpp])                     #17
+ld(hi('NEXTY'),Y)               #18
+jmp(Y,'NEXTY')                  #19
+ld(-22//2)                      #20
+
+# DOKEA implementation (tentative)
+label('dokea#13')
+st([vTmp])                      #13
+adda(1,X)                       #14
+ld([X])                         #15 hi
+ld([vTmp],X)                    #16
+st([vTmp])                      #17 vTmp=hi
+ld([X])                         #19 lo
+ld([vAC],X)                     #19
+ld([vAC+1],Y)                   #20
+st([Y,Xpp])                     #21
+ld([vTmp])                      #22
+st([Y,X])                       #23
+ld(hi('NEXTY'),Y)               #24
+jmp(Y,'NEXTY')                  #25
+ld(-28//2)                      #26
+
+# DEEKA implementation
+label('deeka#13')
+st([vTmp])                      #13
+ld([vAC+1],Y)                   #14
+ld([vAC])                       #15
+adda(1,X)                       #16
+ld([Y,X])                       #17 hi
+st([vTmp0])                     #18
+ld([vAC],X)                     #19
+ld([Y,X])                       #20 lo
+ld([vTmp],X)                    #21
+ld(0,Y)                         #22
+st([Y,Xpp])                     #23
+ld([vTmp0])                     #24
+st([Y,Xpp])                     #25
+ld(hi('NEXTY'),Y)               #26
+jmp(Y,'NEXTY')                  #27
+ld(-30//2)                      #28
+
+# POKEQ implementation
+label('pokeq#13')
+ld([vAC],X)                     #13
+ld([vAC+1],Y)                   #14
+st([Y,X])                       #15
+ld(hi('NEXTY'),Y)               #16
+jmp(Y,'NEXTY')                  #17
+ld(-20//2)                      #18
+
+# DOKEQ implementation
+label('dokeq#13')
+ld([vAC],X)                     #13
+ld([vAC+1],Y)                   #14
+st([Y,Xpp])                     #15
+ld(0)                           #16
+st([Y,X]);                      #18
+ld(hi('NEXTY'),Y)               #19
+jmp(Y,'NEXTY')                  #20
+ld(-22//2)                      #21
+
+# PEEKV implementation
+label('peekv#13')
+st([vTmp])                      #13
+adda(1,X)                       #14
+ld([X])                         #15
+ld(AC,Y)                        #16
+ld([vTmp],X)                    #17
+ld([X])                         #18
+ld(AC,X)                        #19
+ld([Y,X])                       #20
+st([vAC])                       #21
+ld(0)                           #22
+st([vAC+1])                     #23
+ld(hi('NEXTY'),Y)               #24
+jmp(Y,'NEXTY')                  #25
+ld(-28/2)                       #26
+
+# DEEKV implementation
+label('deekv#13')
+adda(1,X)                       #13
+ld([X])                         #14
+ld(AC,Y)                        #15
+ld([vTmp],X)                    #16
+ld([X])                         #17
+ld(AC,X)                        #18
+ld([Y,X])                       #19
+st([Y,Xpp])                     #20
+st([vAC])                       #21
+ld([Y,X])                       #22
+st([vAC+1])                     #23
+ld(hi('NEXTY'),Y)               #24
+jmp(Y,'NEXTY')                  #25
+ld(-28/2)                       #26
+
+# MOVQB implementation
+label('movqb#13')
+ld([vPC+1],Y)                   #13
+st([vTmp])                      #14
+st([Y,Xpp])                     #15
+ld([Y,X])                       #16
+ld(AC,X)                        #17
+ld(0,Y)                         #18
+ld([vTmp])                      #19
+st([Y,X])                       #20
+ld([vPC])                       #21
+adda(1)                         #22
+st([vPC])                       #23
+ld(hi('NEXTY'),Y)               #24
+jmp(Y,'NEXTY')                  #25
+ld(-28/2)                       #26
+
+# MOVQW implementation
+label('movqw#13')
+ld([vPC+1],Y)                   #13
+st([vTmp])                      #14
+st([Y,Xpp])                     #15
+ld([Y,X])                       #16
+ld(AC,X)                        #17
+ld(0,Y)                         #18
+ld([vTmp])                      #19
+st([Y,Xpp])                     #20
+ld(0)                           #21
+st([Y,X])                       #22
+ld([vPC])                       #23
+adda(1)                         #24
+st([vPC])                       #25
+ld(hi('NEXTY'),Y)               #26
+jmp(Y,'NEXTY')                  #27
+ld(-30/2)                       #28
+
+# DOKEI implementation
+label('dokei#13')
+st([Y,Xpp])                     #13
+st([vTmp])                      #14 ih
+ld([Y,X])                       #15 il
+ld([vAC],X)                     #16
+ld([vAC+1],Y)                   #17
+st([Y,Xpp])                     #18
+ld([vTmp])                      #19 ih
+st([Y,X])                       #20
+ld([vPC])                       #21
+adda(1)                         #22
+st([vPC])                       #23
+ld(hi('NEXTY'),Y)               #24
+jmp(Y,'NEXTY')                  #25
+ld(-28//2)                      #26
+
+# CMPWU implementation
+label('cmpwu#13')
+adda(1,X)                       #13
+ld([vAC+1])                     #14 compare high bytes
+xora([X])                       #15
+beq('cmp#18')                   #16 equal -> check low byte
+bgt('cmp#19')                   #17 same high bit -> subtract
+ld([vAC+1])                     #18 otherwise:
+xora(0x80)                      #19 vACH>=0x80>[X] if vACH[7]==1
+ora(1)                          #20 vACH<0x80<=[X] if vACH[7]==0
+label('cmp#21')
+st([vAC+1])                     #21 return
+ld(hi('NEXTY'),Y)               #22
+jmp(Y,'NEXTY')                  #23
+ld(-26/2)                       #24
+
+label('cmp#19')
+bra('cmp#21')                   #19 high bytes are different
+suba([X])                       #20 but with same high bit
+
+label('cmp#18')
+ld([vTmp],X)                    #18 high bytes are equal.
+label('cmpi#19')
+ld([vAC])                       #19 same things with low bytes
+xora([X])                       #20
+bpl('cmp#23')                   #21
+ld([vAC])                       #22
+xora(0x80)                      #23
+ora(1)                          #24
+st([vAC+1])                     #25
+ld(hi('NEXTY'),Y)               #26
+jmp(Y,'NEXTY')                  #27
+ld(-30/2)                       #28
+label('cmp#23')
+suba([X])                       #23
+st([vAC])                       #24
+st([vAC+1])                     #25
+ld(hi('NEXTY'),Y)               #26
+jmp(Y,'NEXTY')                  #27
+ld(-30/2)                       #28
+
+# CMPWS implementation
+label('cmpws#13')
+adda(1,X)                       #13
+ld([vAC+1])                     #14 compare high bytes
+xora([X])                       #15
+beq('cmp#18')                   #16 equal -> check low byte
+bgt('cmp#19')                   #17 same high bit -> subtract
+ld([vAC+1])                     #18 otherwise:
+bra('cmp#21')                   #19 vACH>=0>[X] if vACH[7]==0
+ora(1)                          #20 vACH<0<=[X] if vACH[7]==1
+
+# CMPIU implementation
+label('cmpiu#13')
+st([vTmp])                      #13
+ld([vAC+1])                     #14
+bne('cmpiu#17')                 #15 
+ld(vTmp,X)                      #16 
+bra('cmpi#19')                  #17 vACH=0: reuse
+label('cmpiu#17')
+ld(1)                           #17 vACH!=0:
+st([vAC+1])                     #18
+ld(hi('REENTER'),Y)             #19
+jmp(Y,'REENTER')                #20
+ld(-24/2)                       #21
+
+# CMPIS implementation
+label('cmpis#13')
+st([vTmp])                      #13
+ld([vAC+1])                     #14
+bne('cmpis#17')                 #15 
+ld(vTmp,X)                      #16 
+bra('cmpi#19')                  #17 vACH=0: reuse
+label('cmpis#17')
+ld(hi('REENTER'),Y)             #17 vACH!=0:
+jmp(Y,'REENTER')                #18
+ld(-22/2)                       #19
+
+
+# ADDV immplementation
+label('addv#13')
+ld(0,Y)                         #13
+ld(AC,X)                        #14
+ld([Y,X])                       #15
+adda([vAC])                     #16
+st([Y,Xpp])                     #17
+bmi('addv#20')                  #18
+suba([vAC])                     #19
+ora([vAC])                      #20
+bmi('addv#23c')                 #21
+ld([Y,X])                       #22
+label('addv#23')
+bra('addv#25')                  #23
+adda([vAC+1])                   #24
+label('addv#20')
+anda([vAC])                     #20
+bpl('addv#23')                  #21
+ld([Y,X])                       #22
+label('addv#23c')
+adda([vAC+1])                   #23
+adda(1)                         #24
+label('addv#25')
+st([Y,X])                       #25
+ld(hi('NEXTY'),Y)               #26
+jmp(Y,'NEXTY')                  #27
+ld(-30/2)                       #28
+
+# SUBV implementation
+label('subv#13')
+ld(0,Y)                         #13
+ld(AC,X)                        #14
+ld([Y,X])                       #15
+bmi('subv#18')                  #16
+suba([vAC])                     #17
+st([Y,Xpp])                     #18
+ora([vAC])                      #19
+bmi('subv#22c')                 #20
+ld([Y,X])                       #21
+label('subv#22')
+nop()                           #22
+bra('addv#25')                  #23
+suba([vAC+1])                   #24
+label('subv#18')
+st([Y,Xpp])                     #18
+anda([vAC])                     #19
+bpl('subv#22')                  #20
+ld([Y,X])                       #21
+label('subv#22c')
+suba([vAC+1])                   #22
+bra('addv#25')                  #23
+suba(1)                         #24
+
+
 
 #-----------------------------------------------------------------------
-# Implementation of long and fast conditional branches
+#
+#   $1900 ROM page 25: more vCPU ops
+#
+#-----------------------------------------------------------------------
+
+align(0x100, size=0x100)
+
+# ALLOC implementation
+label('alloc#13')
+adda([vSP])                     #13
+st([vSP])                       #14
+ld(hi('REENTER'),Y)             #15
+jmp(Y,'REENTER')                #16
+ld(-20/2)                       #17
+
+# STLW implementation
+label('stlw')
+adda([vSP])                     #13
+st([vTmp])                      #14
+adda(1,X)                       #15
+ld([vAC+1])                     #16
+st([X])                         #17
+ld([vTmp],X)                    #18
+ld([vAC])                       #19
+st([X])                         #20
+ld(hi('REENTER'),Y)             #21
+jmp(Y,'REENTER')                #22
+ld(-26/2)                       #23
+
+# LDLW implementation
+label('ldlw')
+adda([vSP])                     #13
+st([vTmp])                      #14
+adda(1,X)                       #15
+ld([X])                         #16
+st([vAC+1])                     #17
+ld([vTmp],X)                    #18
+ld([X])                         #19
+st([vAC])                       #20
+ld(hi('REENTER'),Y)             #21
+jmp(Y,'REENTER')                #22
+ld(-26/2)                       #23
+
+# PUSH implementation
+label('push#13')
+ld([vSP])                       #13
+suba(2)                         #14
+st([vSP],X)                     #15
+ld([vLR])                       #16
+st([Y,Xpp])                     #17
+ld([vLR+1])                     #18
+st([Y,Xpp])                     #19
+ld([vPC])                       #20
+suba(1)                         #21
+st([vPC])                       #22
+ld(hi('REENTER'),Y)             #23
+jmp(Y,'REENTER')                #24
+ld(-28//2)                      #25
+
+# POP implementation 
+label('pop#13')
+ld([X])                         #13
+st([vLR])                       #14
+ld([vSP])                       #15
+adda(1,X)                       #16
+adda(2)                         #17
+st([vSP])                       #18
+ld([X])                         #19
+st([vLR+1])                     #20
+ld([vPC])                       #21
+suba(1)                         #22
+st([vPC])                       #23
+ld(hi('NEXTY'),Y)               #24
+jmp(Y,'NEXTY')                  #25
+ld(-28//2)                      #26
+
+#-----------------------------------------------------------------------
+# implementation of long and fast conditional branches
 # Original idea from at67
 
 # JNE implementation (24/26)
@@ -7319,76 +7795,6 @@ ld(1)                           #17
 bra('jccn#20')                  #18
 nop()                           #19
 
-#-----------------------------------------------------------------------
-
-# ALLOC implementation
-label('alloc#13')
-adda([vSP])                     #13
-st([vSP])                       #14
-ld(hi('REENTER'),Y)             #15
-jmp(Y,'REENTER')                #16
-ld(-20/2)                       #17
-
-# STLW implementation
-label('stlw')
-adda([vSP])                     #13
-st([vTmp])                      #14
-adda(1,X)                       #15
-ld([vAC+1])                     #16
-st([X])                         #17
-ld([vTmp],X)                    #18
-ld([vAC])                       #19
-st([X])                         #20
-ld(hi('REENTER'),Y)             #21
-jmp(Y,'REENTER')                #22
-ld(-26/2)                       #23
-
-# LDLW implementation
-label('ldlw')
-adda([vSP])                     #13
-st([vTmp])                      #14
-adda(1,X)                       #15
-ld([X])                         #16
-st([vAC+1])                     #17
-ld([vTmp],X)                    #18
-ld([X])                         #19
-st([vAC])                       #20
-ld(hi('REENTER'),Y)             #21
-jmp(Y,'REENTER')                #22
-ld(-26/2)                       #23
-
-# PUSH implementation
-label('push#13')
-ld([vSP])                       #13
-suba(2)                         #14
-st([vSP],X)                     #15
-ld([vLR])                       #16
-st([Y,Xpp])                     #17
-ld([vLR+1])                     #18
-st([Y,Xpp])                     #19
-ld([vPC])                       #20
-suba(1)                         #21
-st([vPC])                       #22
-ld(hi('REENTER'),Y)             #23
-jmp(Y,'REENTER')                #24
-ld(-28//2)                      #25
-
-# POP implementation 
-label('pop#13')
-ld([X])                         #13
-st([vLR])                       #14
-ld([vSP])                       #15
-adda(1,X)                       #16
-adda(2)                         #17
-st([vSP])                       #18
-ld([X])                         #19
-st([vLR+1])                     #20
-ld([vPC])                       #21
-suba(1)                         #22
-st([vPC])                       #23
-ld(hi('NEXTY'),Y)               #24
-jmp(Y,'NEXTY')                  #25
-ld(-28//2)                      #26
 
 
 
