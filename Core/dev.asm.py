@@ -407,13 +407,18 @@ userVars        = zpByte(0)
 
 # Start of safely usable bytes under ROMv4
 userVars_v4     = zpByte(0)
-vIrqSave        = zpByte(5)  # saved vcpu context during virq
-vTmp0           = zpByte(1)  # scratch register used by v7 ops
+vIrqSave        = zpByte(5) # saved vcpu context during virq
+vB0             = zpByte(1) # FAC sign
 # Start of safely usable bytes under ROMv5
 userVars_v5     = zpByte(0)
 # Start of safely usable bytes under ROMv6
 userVars_v6     = zpByte(0)
 # Start of safely usable bytes under ROMv7
+vB1             = zpByte(1) # FAC exponent
+vB2             = zpByte(1) # LAC extension byte
+vLAC            = zpByte(4) # LAC register
+vT2             = zpByte(2) # T2 register
+vT3             = zpByte(2) # T3 register
 userVars_v7     = zpByte(0)
 
 # [0x80]
@@ -423,7 +428,7 @@ oneConst        = zpByte(1)
 userVars2       = zpByte(0)
 
 # Warning: One should avoid using SYS_ExpanderControl
-# under ROMv4 overwrites becauses it overwrites 0x81.
+# under ROMv4 becauses it overwrites 0x81.
 
 
 #-----------------------------------------------------------------------
@@ -2183,21 +2188,21 @@ ld(hi('PREFIX35_PAGE'),Y)       #11
 jmp(Y,AC)                       #12
 ld([vPC+1],Y)                   #13
 
-# Instruction MOVQB (39 ii vv), 28 cycles
-# * Store immediate ii into byte [vv]:=ii
-label('MOVQB_v7')
-ld(hi('movqb#13'),Y)            #10
-jmp(Y,'movqb#13')               #11
+# Instruction POKEA (39 xx), 28 cycles
+# * Store word [xx] at location [vAC]
+label('POKEA_v7')
+ld(hi('pokea#13'),Y)            #10,12
+jmp(Y,'pokea#13')               #11
 
-# Instruction MOVQW (3b ii vv), 30 cycles
-# * Store immediate ii into word [vv]:=ii [vv+1]:=0
-label('MOVQW_v7')
-ld(hi('movqw#13'),Y)            #10,12
-jmp(Y,'movqw#13')               #11
+# Instruction DOKEA (3b xx), 28 cycles
+# * Store word [xx] at location [vAC]
+label('DOKEA_v7')
+ld(hi('dokea#13'),Y)            #10
+jmp(Y,'dokea#13')               #11+overlap
 
 # Instruction DEEKA (3d xx), 30 cycles
 # * Load word at location [vAC] and store into [xx]
-# * Uses vTmp0 as a scratch register
+# * Uses sysArgs7 as a scratch register
 label('DEEKA_v7')
 ld(hi('deeka#13'),Y)            #10,12
 jmp(Y,'deeka#13')               #11
@@ -2230,16 +2235,18 @@ label('POKEQ_v7')
 ld(hi('pokeq#13'),Y)            #10,12
 jmp(Y,'pokeq#13')               #11
 
-# Instruction POKEA (48 xx), 28 cycles
-# * Store word [xx] at location [vAC]
-label('POKEA_v7')
-ld(hi('pokea#13'),Y)            #10,12
-jmp(Y,'pokea#13')               #11
+# Instruction MOVQB (48 vv ii), 26 cycles
+# * Store immediate ii into byte [vv]:=ii
+label('MOVQB_v7')
+ld(hi('movqb#13'),Y)            #10
+jmp(Y,'movqb#13')               #11
 
-# Instruction slot (4a ..)
-nop()                           #10,12
-nop()                           #11
-nop()                           #11
+# Instruction MOVQW (4a vv ii), 28 cycles
+# * Store immediate ii into word [vv]:=ii [vv+1]:=0
+label('MOVQW_v7')
+ld(hi('movqw#13'),Y)            #10
+jmp(Y,'movqw#13')               #11
+ld([vPC+1],Y)                   #12
 
 # Instruction JGT (4d ll hh), 26 cycles (was GT)
 # * Branch if positive (if(vACL>0)vPC=hhll[+2])
@@ -2350,11 +2357,9 @@ st([vAC+1])                     #12
 bra('NEXTY')                    #13
 ld(-16/2)                       #14
 
-# Instruction DOKEA (7d xx), 28 cycles
-# * Store word [xx] at location [vAC]
-label('DOKEA_v7')
-ld(hi('dokea#13'),Y)            #10
-jmp(Y,'dokea#13')               #11+overlap
+# Instruction slot (7d ..)
+nop()
+nop()
 
 # Instruction LUP: ROM lookup (vAC=ROM[vAC+D]), 26 cycles
 label('LUP')
@@ -2445,10 +2450,10 @@ label('.sys#13')
 ld(hi('.sys#16'),Y)              #13,12
 jmp(Y,'.sys#16')                 #14
 
-# Instruction slot (b1 ..)
-nop()                            #10,15
-nop()                            #11
-nop()                            #12
+# Instruction slot (b1 ...)
+nop()                           #10
+nop()                           #11
+nop()                           #12
 
 # Instruction SYS: Native call, <=256 cycles (<=128 ticks, in reality less)
 #
@@ -2552,9 +2557,11 @@ label('ALLOC')
 ld(hi('alloc#13'),Y)            #10,12
 jmp(Y,'alloc#13')               #11
 
-# Instruction slot (e1 ..)
-nop()                           #10
-nop()                           #11
+# Instruction NEGV (e1 vv), 30 cycles
+# * Negates word [vv]:=-[vv]
+label('NEGV_v7')
+ld(hi('negv#13'),Y)             #10,12
+jmp(Y,'negv#13')                #11 
 
 # The instructions below are all implemented in the second code page. Jumping
 # back and forth makes each 6 cycles slower, but it also saves space in the
@@ -7158,18 +7165,6 @@ label('PREFIX35_PAGE')
 def oplabel(name):
   define(name, 0x3500 | (pc() & 0xff))
 
-# Self-restart
-label('p35restart#18')
-nop()                           #18
-nop()                           #19
-nop()                           #20
-ld(-2)                          #21
-adda([vPC])                     #22
-st([vPC])                       #23
-ld(hi('NEXTY'),Y)               #24
-jmp(Y,'NEXTY')                  #25
-ld(-28/2)                       #26
-
 # Jump into FSM14
 label('fsm14op1#16')
 st([fsmState])                  #16
@@ -7180,7 +7175,16 @@ st([sysArgs+6])                 #20
 
 # Instruction slots
 
-fillers(until=0x3b)
+fillers(until=0x37)
+
+
+# Reserved for RDIVS
+nop()                           #14
+nop()                           #15
+
+# Reserved for MULH
+nop()                           #14
+nop()                           #15
 
 # Instruction RDIVU (35 3b xx)
 # - Divide [xx] by vAC
@@ -7305,38 +7309,455 @@ ld(hi('NEXTY'),Y)               #22
 jmp(Y,'NEXTY')                  #23
 ld(-26//2)                      #24
 
-nop()
+# Instruction ADDIV (35 7d ii vv), 38-40 cycles
+# * Add byte immediate ii to var [vv]+=ii
+oplabel('ADDIV_v7')
+ld(min(0,maxTicks-40//2))       #14
+adda([vTicks])                  #15
+blt('p35restart#18')            #16
+ld([vPC])                       #17
+adda(2)                         #18
+st([vPC])                       #19
+ld([Y,X])                       #20 ii
+st([Y,Xpp])                     #21
+st([vTmp])                      #22
+ld([Y,X])                       #23 vv
+ld(AC,X)                        #24
+ld(0,Y)                         #25
+ld([Y,X])                       #26
+adda([vTmp])                    #27
+st([Y,Xpp])                     #28
+bmi('addiv#31')                 #29
+suba([vTmp])                    #30
+ora([vTmp])                     #31
+bpl('addiv#34')                 #32
+ld(1)                           #33
+label('addiv#34c')
+adda([Y,X])                     #34
+st([Y,X])                       #35
+ld(hi('NEXTY'),Y)               #36
+jmp(Y,'NEXTY')                  #37
+ld(-40//2)                      #38
+label('addiv#31')
+anda([vTmp])                    #31
+bmi('addiv#34')                 #32
+label('addiv#33')
+ld(1)                           #33
+label('addiv#34')
+ld(hi('NEXTY'),Y)               #34
+jmp(Y,'NEXTY')                  #35
+ld(-38//2)                      #36
 
-# Instruction NEGW (35 7e)
-# * Negate vAC := -vAC
-oplabel('NEGW')
-ld([vAC])                       #14
-xora(0xff)                      #15
-adda(1)                         #16
-st([vAC])                       #17
-beq(pc()+3)                     #18
-bra(pc()+3)                     #19
-ld(0)                           #20
-ld(0xff)                        #20!
-adda([vAC+1])                   #21
-xora(0xff)                      #22
-st([vAC+1])                     #23
-ld(hi('NEXTY'),Y)               #24
-jmp(Y,'NEXTY')                  #25
-ld(-28//2)                      #26
+# Instruction SUBIV (35 9c ii vv), 38-40 cycles
+# * Subtract byte immediate ii to var [vv]-=ii
+oplabel('SUBIV_v7')
+ld(min(0,maxTicks-40//2))       #14
+adda([vTicks])                  #15
+blt('p35restart#18')            #16
+ld([vPC])                       #17
+adda(2)                         #18
+st([vPC])                       #19
+ld([Y,X])                       #20 ii
+st([Y,Xpp])                     #21
+st([vTmp])                      #22
+ld([Y,X])                       #23 vv
+ld(AC,X)                        #24
+ld(0,Y)                         #25
+ld([Y,X])                       #26
+bmi('subiv#29')                 #27
+suba([vTmp])                    #28
+st([Y,Xpp])                     #29
+ora([vTmp])                     #30
+bpl('addiv#33')                 #31
+bmi('addiv#34c')                #32 
+ld(0xff)                        #33
+label('subiv#29')
+st([Y,Xpp])                     #29
+anda([vTmp])                    #30
+bpl('addiv#33')                 #31
+bmi('addiv#34c')                #32
+ld(0xff)                        #33
 
+# Instruction LDT2 (35 b5 ll hh), 26 cycles
+# * Loads immediate $hhll into vT2
+oplabel('LDT2_v7')
+ld([vPC])                       #14
+adda(2)                         #15
+st([vPC])                       #16
+ld([Y,X])                       #17
+st([Y,Xpp])                     #18
+st([vT2])                       #19
+ld([Y,X])                       #20
+st([vT2+1])                     #21
+ld(hi('NEXTY'),Y)               #22
+jmp(Y,'NEXTY')                  #23
+ld(-26/2)                       #24
 
+# Instruction LDT3 (35 c0 ll hh), 26 cycles
+# * Loads immediate $hhll into vT3
+oplabel('LDT3_v7')
+ld([vPC])                       #14
+adda(2)                         #15
+st([vPC])                       #16
+ld([Y,X])                       #17
+st([Y,Xpp])                     #18
+st([vT3])                       #19
+ld([Y,X])                       #20
+st([vT3+1])                     #21
+ld(hi('NEXTY'),Y)               #22
+jmp(Y,'NEXTY')                  #23
+ld(-26/2)                       #24
 
+# Instruction COPY (35 cb)
+# * Copy up to vAC (max 256) bytes from [T3] to [T2]
+# * Handles page crossings. Peak rate 10 bytes/scanline.
+# * On return, T3 and T2 contain the next addresses
+#   and vAC contains the number of bytes left to copy.
+oplabel('COPY_v7')
+ld('copy#3a')                   #14
+ld(hi('copy#18'),Y)             #15
+jmp(Y,'copy#18')                #16
+st([fsmState])                  #17
 
+# Instruction COPYN (35 cf nn)
+# * Copy nn bytes from [T3] to [T2].
+# * Handles page crossings. Peak rate 10 bytes/scanline.
+# * On return, T3 and T2 contain the next addresses.
+oplabel('COPYN_v7')
+ld([Y,X])                       #14
+st([sysArgs+6])                 #15
+ld([vPC])                       #16
+adda(1)                         #17
+st([vPC])                       #18
+ld(-28/2)                       #19
+label('copyn#-8')
+st([vTmp])                      #20
+ld('copy#3a')                   #21
+st([fsmState])                  #22
+ld(hi('FSM18_ENTER'))           #23
+st([vCpuSelect])                #24
+adda(1,Y)                       #25
+jmp(Y,'NEXT')                   #26
+ld([vTmp])                      #27
 
-# Instruction slots
+# Instruction MOVL (35 dd yy xx), 28+30 cycles
+# * Move four bytes long from [xx] to [yy]
+# * No page crossings, trashes sysArgs,T0,T1
+oplabel('MOVL_v7')
+bra('fsm18op2#16')              #14
+ld('movl#3a')                   #15
 
-fillers(until=0xff)
+# Instruction MOVF (35 df yy xx), 28+24+22 cycles
+# * Move five bytes float from [xx] to [yy]
+# * No page crossings, trashes sysArgs,T0,T1
+oplabel('MOVF_v7')
+bra('fsm18op2#16')              #14
+ld('movf#3a')                   #15
+
+# fsm18 helper
+label('fsm18op2#16')
+st([fsmState])                  #16
+ld([Y,X])                       #17
+st([Y,Xpp])                     #18
+st([sysArgs+5])                 #19
+ld([Y,X])                       #20
+st([sysArgs+6])                 #21
+ld(2)                           #22
+adda([vPC])                     #23
+st([vPC])                       #24
+ld(hi('FSM18_ENTER'))           #25
+st([vCpuSelect])                #26
+adda(1,Y)                       #27
+jmp(Y,'NEXT')                   #28
+ld(-30/2)                       #29
+
+# restart helper
+label('p35restart#18')
+nop()                           #18
+ld(-2)                          #19
+adda([vPC])                     #20
+st([vPC])                       #21
+ld(hi('NEXTY'),Y)               #22
+jmp(Y,'NEXTY')                  #23
+ld(-26/2)                       #24
 
 
 #-----------------------------------------------------------------------
 #
-#   $1800 ROM page 24: vCPU op implementation (from page 3)
+#   $1800 ROM page 24: FSM18. Copy instructions
+#
+#-----------------------------------------------------------------------
+
+fillers(until=0xff)
+label('FSM18_ENTER')
+bra(pc()+4)                     #0
+align(0x100, size=0x100)
+bra([fsmState])                 #1
+assert (pc() & 255) == (symbol('NEXT') & 255)
+label('FSM18_NEXT')
+adda([vTicks])                  #0
+bge([fsmState])                 #1
+st([vTicks])                    #2
+adda(maxTicks)                  #3
+bgt(pc()&255)                   #4
+suba(1)                         #5
+ld(hi('vBlankStart'),Y)         #6
+jmp(Y,[vReturn])                #7
+ld([channel])                   #8
+
+
+# MOVL implementation
+label('movl#3a')
+ld(0,Y)                         #3
+ld([sysArgs+6])                 #4
+adda(1,X)                       #5
+ld([Y,X])                       #6
+st([Y,Xpp])                     #7
+st([sysArgs+1])                 #8
+ld([Y,X])                       #9
+st([Y,Xpp])                     #10
+st([sysArgs+2])                 #11
+ld([Y,X])                       #12
+st([sysArgs+3])                 #13
+ld([sysArgs+6],X)               #14
+ld([Y,X])                       #15
+ld([sysArgs+5],X)               #16
+st([Y,Xpp])                     #17
+ld([sysArgs+1])                 #18
+st([Y,Xpp])                     #19
+ld([sysArgs+2])                 #20
+st([Y,Xpp])                     #21
+ld([sysArgs+3])                 #22
+st([Y,Xpp])                     #23
+ld(hi('ENTER'))                 #24
+st([vCpuSelect])                #25
+ld(hi('NEXTY'),Y)               #26
+jmp(Y,'NEXTY')                  #27
+ld(-30/2)                       #28
+
+# MOVF implementation
+oplabel('MOVF_v7')
+label('movf#3a')
+ld(0,Y)                         #3
+ld([sysArgs+6],X)               #4
+ld([Y,X])                       #5
+st([Y,Xpp])                     #6
+st([sysArgs+0])                 #7
+ld([Y,X])                       #8
+st([Y,Xpp])                     #9
+st([sysArgs+1])                 #10
+ld([Y,X])                       #11
+st([Y,Xpp])                     #12
+st([sysArgs+2])                 #13
+ld([Y,X])                       #14
+st([Y,Xpp])                     #15
+st([sysArgs+3])                 #16
+ld([Y,X])                       #17
+st([sysArgs+4])                 #18
+nop()                           #19
+ld('movf#3b')                   #20
+st([fsmState])                  #21
+bra('NEXT')                     #22
+ld(-24/2)                       #23
+
+label('movf#3b')
+ld(0,Y)                         #3
+ld([sysArgs+5],X)               #4
+ld([sysArgs+0])                 #5
+st([Y,Xpp])                     #6
+ld([sysArgs+1])                 #7
+st([Y,Xpp])                     #8
+ld([sysArgs+2])                 #9
+st([Y,Xpp])                     #10
+ld([sysArgs+3])                 #11
+st([Y,Xpp])                     #12
+ld([sysArgs+4])                 #13
+st([Y,Xpp])                     #14
+ld(hi('ENTER'))                 #15
+st([vCpuSelect])                #16
+ld(hi('REENTER'),Y)             #17
+jmp(Y,'REENTER')                #18
+ld(-22/2)                       #19
+
+# COPY implementation
+label('copy#18')
+ld([vAC])                       #18
+st([sysArgs+6])                 #19
+bne('copy#22')                  #20
+ld([vAC+1])                     #21
+bne('copy#24')                  #22
+ld(hi('REENTER'),Y)             #23
+jmp(Y,'REENTER')                #24
+ld(-28/2)                       #25
+label('copy#22')
+ld(0)                           #22
+st([vAC])                       #23
+ld(hi('FSM18_ENTER'))           #24
+st([vCpuSelect])                #25
+bra('NEXT')                     #26
+ld(-28/2)                       #27
+label('copy#24')
+suba(1)                         #24
+st([vAC+1])                     #25
+ld(hi('FSM18_ENTER'))           #26
+st([vCpuSelect])                #27
+bra('NEXT')                     #28
+ld(-30/2)                       #29
+
+label('copy#3a')
+ld([vT3])                       #3
+adda(1,X)                       #4
+anda(0xfc)                      #5
+xora(0xfc)                      #6
+beq('copy#9a')                  #7  -> slow w/crossings
+ld([vT2])                       #8
+anda(0xfc)                      #9
+xora(0xfc)                      #10
+beq('copy#13a')                 #11 -> slow w/crossings
+ld([vT3+1],Y)                   #12
+ld([sysArgs+6])                 #13
+anda(0xfc)                      #14
+beq('copy#17a')                 #15
+ld([Y,X])                       #16 burst 4 
+st([Y,Xpp])                     #17
+st([sysArgs+1])                 #18 read offsets 1,2,3
+ld([Y,X])                       #19
+st([Y,Xpp])                     #20
+st([sysArgs+2])                 #21
+ld([Y,X])                       #22
+st([sysArgs+3])                 #23
+ld('copy#3b')                   #24 burst 4 cont
+st([fsmState])                  #25
+bra('NEXT')                     #26
+ld(-28/2)                       #27
+
+label('copy#3b')
+ld([vT3],X)                     #3 burst 4 cont
+ld([vT3+1],Y)                   #4
+ld([Y,X])                       #5 read offset 0
+ld([vT2],X)                     #6
+ld([vT2+1],Y)                   #7
+st([Y,Xpp])                     #8 write offsets 0,1,2,3
+ld([sysArgs+1])                 #9
+st([Y,Xpp])                     #10
+ld([sysArgs+2])                 #11
+st([Y,Xpp])                     #12
+ld([sysArgs+3])                 #13
+st([Y,Xpp])                     #14
+ld([vT3])                       #15 inc vT3
+adda(4)                         #16
+st([vT3])                       #17
+ld([vT2])                       #18 inc vT2
+adda(4)                         #19
+st([vT2])                       #20
+ld([sysArgs+6])                 #21 dec N
+suba(4)                         #22
+bne('copy#25b')                 #23
+ld(hi('NEXTY'),Y)               #24 exit
+ld(hi('ENTER'))                 #25
+st([vCpuSelect])                #26
+jmp(Y,'NEXTY')                  #27
+ld(-30/2)                       #28
+label('copy#25b')
+st([sysArgs+6])                 #25 loop
+ld('copy#3a')                   #26
+st([fsmState])                  #27
+bra('NEXT')                     #28
+ld(-30/2)                       #29
+
+label('copy#9a')
+bra(pc()+1)                     #9
+nop()                           #10,11
+ld([vT3+1],Y)                   #12
+label('copy#13a')
+ld([vT3],X)                     #13 slow w/crossings
+ld([Y,X])                       #14 copy 1
+ld([vT2+1],Y)                   #15
+ld([vT2],X)                     #16
+st([Y,X])                       #17
+ld('copy#3c')                   #18
+st([fsmState])                  #19
+bra('NEXT')                     #20
+ld(-22/2)                       #21
+
+label('copy#3c')
+ld([vT3])                       #3 inc vT3
+adda(1)                         #4
+st([vT3])                       #5
+beq(pc()+3)                     #6
+bra(pc()+3)                     #7
+ld(0)                           #8
+ld(1)                           #8!
+adda([vT3+1])                   #9
+st([vT3+1])                     #10
+ld([vT2])                       #11 inc vT2
+adda(1)                         #12
+st([vT2])                       #13
+beq(pc()+3)                     #14
+bra(pc()+3)                     #15
+ld(0)                           #16
+ld(1)                           #16!
+adda([vT2+1])                   #17
+st([vT2+1])                     #18
+ld([sysArgs+6])                 #19 dec N
+suba(1)                         #20
+bne('copy#23c')                 #21
+ld(hi('NEXTY'),Y)               #22 exit
+ld(hi('ENTER'))                 #23
+st([vCpuSelect])                #24
+jmp(Y,'NEXTY')                  #25
+ld(-28/2)                       #26
+label('copy#23c')
+st([sysArgs+6])                 #23
+ld('copy#3a')                   #24
+st([fsmState])                  #25
+bra('NEXT')                     #26
+ld(-28/2)                       #27
+
+label('copy#17a')
+ld('copy#3d')                   #17 -> slow final state
+st([fsmState])                  #18
+nop()                           #19
+bra('NEXT')                     #20
+ld(-22/2)                       #21
+
+label('copy#3d')
+ld([vT3],X)                     #3 copy 1
+ld([vT3+1],Y)                   #4
+ld([Y,X])                       #5
+ld([vT2],X)                     #6
+ld([vT2+1],Y)                   #7
+st([Y,X])                       #8
+ld([vT3])                       #9
+adda(1)                         #10
+st([vT3])                       #11
+ld([vT2])                       #12
+adda(1)                         #13
+st([vT2])                       #14
+ld([sysArgs+6])                 #15
+suba(1)                         #16
+st([sysArgs+6])                 #17
+beq('copy#20d')                 #18
+blt('copy#21d')                 #19
+bgt('NEXT')                     #20
+ld(-22/2)                       #21
+label('copy#20d')
+ld(hi('NEXTY'),Y)               #20 exit
+ld(hi('ENTER'))                 #21
+st([vCpuSelect])                #22
+jmp(Y,'NEXTY')                  #23
+ld(-26/2)                       #24
+label('copy#21d')
+ld('copy#3a')                   #21
+st([fsmState])                  #22
+nop()                           #23
+bra('NEXT')                     #24
+ld(-26/2)                       #25
+
+
+#-----------------------------------------------------------------------
+#
+#   $1900 ROM page 25: vCPU op implementation
 #
 #-----------------------------------------------------------------------
 
@@ -7378,13 +7799,13 @@ ld([vAC+1],Y)                   #14
 ld([vAC])                       #15
 adda(1,X)                       #16
 ld([Y,X])                       #17 hi
-st([vTmp0])                     #18
+st([sysArgs+7])                 #18
 ld([vAC],X)                     #19
 ld([Y,X])                       #20 lo
 ld([vTmp],X)                    #21
 ld(0,Y)                         #22
 st([Y,Xpp])                     #23
-ld([vTmp0])                     #24
+ld([sysArgs+7])                 #24
 st([Y,Xpp])                     #25
 ld(hi('NEXTY'),Y)               #26
 jmp(Y,'NEXTY')                  #27
@@ -7450,9 +7871,24 @@ ld([vPC+1],Y)                   #13
 st([vTmp])                      #14
 st([Y,Xpp])                     #15
 ld([Y,X])                       #16
-ld(AC,X)                        #17
-ld(0,Y)                         #18
-ld([vTmp])                      #19
+ld([vTmp],X)                    #17
+st([X])                         #18
+ld([vPC])                       #19
+adda(1)                         #20
+st([vPC])                       #21
+ld(hi('NEXTY'),Y)               #22
+jmp(Y,'NEXTY')                  #23
+ld(-26/2)                       #24
+
+# MOVQW implementation
+label('movqw#13')
+st([vTmp])                      #13
+st([Y,Xpp])                     #14
+ld([Y,X])                       #15
+ld([vTmp],X)                    #16
+ld(0,Y)                         #17
+st([Y,Xpp])                     #18
+ld(0)                           #19
 st([Y,X])                       #20
 ld([vPC])                       #21
 adda(1)                         #22
@@ -7460,42 +7896,6 @@ st([vPC])                       #23
 ld(hi('NEXTY'),Y)               #24
 jmp(Y,'NEXTY')                  #25
 ld(-28/2)                       #26
-
-# MOVQW implementation
-label('movqw#13')
-ld([vPC+1],Y)                   #13
-st([vTmp])                      #14
-st([Y,Xpp])                     #15
-ld([Y,X])                       #16
-ld(AC,X)                        #17
-ld(0,Y)                         #18
-ld([vTmp])                      #19
-st([Y,Xpp])                     #20
-ld(0)                           #21
-st([Y,X])                       #22
-ld([vPC])                       #23
-adda(1)                         #24
-st([vPC])                       #25
-ld(hi('NEXTY'),Y)               #26
-jmp(Y,'NEXTY')                  #27
-ld(-30/2)                       #28
-
-# DOKEI implementation
-label('dokei#13')
-st([Y,Xpp])                     #13
-st([vTmp])                      #14 ih
-ld([Y,X])                       #15 il
-ld([vAC],X)                     #16
-ld([vAC+1],Y)                   #17
-st([Y,Xpp])                     #18
-ld([vTmp])                      #19 ih
-st([Y,X])                       #20
-ld([vPC])                       #21
-adda(1)                         #22
-st([vPC])                       #23
-ld(hi('NEXTY'),Y)               #24
-jmp(Y,'NEXTY')                  #25
-ld(-28//2)                      #26
 
 # CMPWU implementation
 label('cmpwu#13')
@@ -7575,6 +7975,24 @@ ld(hi('REENTER'),Y)             #17 vACH!=0:
 jmp(Y,'REENTER')                #18
 ld(-22/2)                       #19
 
+# NEGV implementation
+label('negv#13')
+ld(AC,X)                        #13
+ld(0,Y)                         #14
+ld([Y,X])                       #15
+xora(0xff)                      #16
+adda(1)                         #17
+st([Y,Xpp])                     #18
+beq(pc()+3)                     #19
+bra(pc()+3)                     #20
+ld(0)                           #21
+ld(0xff)                        #21
+adda([Y,X])                     #22
+xora(0xff)                      #23
+st([Y,X])                       #24
+ld(hi('REENTER'),Y)             #25
+jmp(Y,'REENTER')                #26
+ld(-30/2)                       #27
 
 # ADDV immplementation
 label('addv#13')
@@ -7633,7 +8051,7 @@ suba(1)                         #24
 
 #-----------------------------------------------------------------------
 #
-#   $1900 ROM page 25: more vCPU ops
+#   $1A00 ROM page 26: more vCPU ops
 #
 #-----------------------------------------------------------------------
 
@@ -7843,6 +8261,12 @@ define('userVars',   userVars)
 define('userVars_v4',userVars_v4)
 define('userVars_v5',userVars_v5)
 define('userVars_v6',userVars_v6)
+define('vB0_v7'     ,vB0)
+define('vB1_v7'     ,vB1)
+define('vB2_v7'     ,vB2)
+define('vLAC_v7'    ,vLAC)
+define('vT2_v7'     ,vT2)
+define('vT3_v7'     ,vT3)
 define('userVars_v7',userVars_v7)
 define('videoTable', videoTable)
 define('ledTimer',   ledTimer)
