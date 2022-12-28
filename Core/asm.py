@@ -526,8 +526,11 @@ def getRom1():
 def writeRomFiles(sourceFile):
 
   # Determine stem for file names
-  stem, _ = splitext(sourceFile)        # Remove .py
-  stem, _ = splitext(stem)              # Remove .asm
+  stem = sourceFile
+  if stem.endswith('.py'):
+    stem, _ = splitext(stem)              # Remove .py
+  if stem.endswith('.asm'):
+    stem, _ = splitext(stem)              # Remove .asm
   stem = basename(stem)
   if stem == '': stem = 'out'
 
@@ -690,10 +693,10 @@ def highlight(*args):
 # - function defined('SYMBOL') returns VALUE or 1 if the
 #   symbol was defined, None if if wasn't.
 _defined = {}
-def defined(s):
+def defined(s, default=None):
   if s in _defined:
     return _defined[s]
-  return None
+  return default
 import ast
 for i in reversed(range(len(sys.argv))):
   arg = sys.argv[i]

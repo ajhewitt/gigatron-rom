@@ -313,8 +313,8 @@ $814 Pos=
 [def `***`Gigatron` #0] PrintS!
 CheckMemory!
 [def `K`***` #10
-  ``TTL`microcomputer
-  ``DEVROM #0]                  {ROM`vN for versioned release ROMs}
+  ``TTL`microcomputer`
+  `\DISPLAYNAME #0]             {ROM`vN for versioned release ROMs}
 PrintS!
 
 { Change into default video mode }

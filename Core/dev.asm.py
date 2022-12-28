@@ -161,9 +161,49 @@ from asm import *
 import gcl0x as gcl
 import font_v4 as font
 
-# Enable patches for 512k extension
+
+# Enable patches for 512k board --
+# Roms compiled with this option take full advantage
+# of the 512k extension board but are only suitable
+# for the Gigatron512k.
 WITH_512K_BOARD = defined('WITH_512K_BOARD')
+
+# Enable patches for 128k board --
+# Roms compiled with this option can only be used
+# with a Gigatron equipped with a 128k extension board.
+# This patch forces the framebuffer to remain in banks 0
+# or 1 regardless of the bank selected for the vCPU.
+# This is never needed for the Gigatron512k because the hardware
+# enforces this. This may not be needed for a Gigatron128k equipped
+# with a suitable hardware patch.
 WITH_128K_BOARD = defined('WITH_128K_BOARD')
+
+
+# Enable patches for the Novatron --
+# This supports the particular way the Novatron wires its SPI
+# inputs. This is enabled by default but can be suppressed to
+# attempt support for more than two SPI inputs on Marcel's
+# original RAM & IO extension.
+WITH_NOVATRON_PATCH = defined('WITH_NOVATRON_PATCH', True)
+
+# Rom name --
+# This is the stem of the target rom name
+# in case it differs from the source file stem
+ROMNAME = defined('ROMNAME', argv[0])
+if ROMNAME.endswith('.rom'):
+    ROMNAME, _ = splitext(ROMNAME)
+if ROMNAME.endswith('.py'):
+    ROMNAME, _ = splitext(ROMNAME)
+if ROMNAME.endswith('.asm'):
+    ROMNAME, _ = splitext(ROMNAME)
+
+# Displayed rom name --
+# This is the name displayed by Reset.gcl.
+# It defaults to '[DEV7]'
+DISPLAYNAME = defined('DISPLAYNAME', "[DEV7]")
+
+
+
 
 enableListing()
 #-----------------------------------------------------------------------
@@ -4373,7 +4413,10 @@ for i in range(8):
   ctrl(Y,Xpp)                   #25+i*12 Set MOSI
   ctrl(Y,Xpp)                   #26+i*12 Raise SCLK, disable RAM!
   ld([0])                       #27+i*12 Get MISO
-  anda(0b00001111)              #28+i*12 This is why R1 as pull-DOWN is simpler
+  if WITH_NOVATRON_PATCH:
+    anda(0b00000011)            #28+i*12 Novatron only drives bits 0 and 1
+  else:
+    anda(0b00001111)            #28+i*12 This is why R1 as pull-DOWN is simpler
   beq(pc()+3)                   #29+i*12
   bra(pc()+2)                   #30+i*12
   ld(1)                         #31+i*12
@@ -7518,7 +7561,7 @@ for application in argv[1:]:
     print('Compile type .gcl at $%04x' % pc())
     insertRomDir(name)
     label(name)
-    program = gcl.Program(name)
+    program = gcl.Program(name, romName=DISPLAYNAME)
     program.org(userCode)
     zpReset(userVars)
     for line in open(application).readlines():
@@ -7682,4 +7725,4 @@ if pc()&255 > 0:
 # Finish assembly
 #-----------------------------------------------------------------------
 end()
-writeRomFiles(argv[0])
+writeRomFiles(ROMNAME or argv[0])

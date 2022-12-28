@@ -34,6 +34,7 @@ CFLAGS:=-std=c11 -O3 -Wall
 # Development towards "ROM512v7"
 dev512k7.rom: Core/* Apps/*/* Makefile interface.json
 	python3 Core/dev.asm.py\
+		-DROMNAME=\"$@\" -DDISPLAYNAME=\"[512k7]\"\
 		-DWITH_512K_BOARD=1\
 		Snake=Apps/Snake/Snake_v3.gcl\
 		zippedRacerHorizon=Apps/Racer/Horizon-256x16.rgb\
@@ -54,12 +55,11 @@ dev512k7.rom: Core/* Apps/*/* Makefile interface.json
 		Boot=Apps/CardBoot/CardBoot_v2.gt1\
 		Main=Apps/MainMenu/MainMenu.gcl\
 		Reset=Core/Reset.gcl
-	cp dev.rom $@
-	cp dev.lst $(@:.rom=.lst)
 
 # Development towards "ROM128v7"
 dev128k7.rom: Core/* Apps/*/* Makefile interface.json
 	python3 Core/dev.asm.py\
+		-DROMNAME=\"$@\" -DDISPLAYNAME=\"[128k7]\"\
 		-DWITH_128K_BOARD=1\
 		Snake=Apps/Snake/Snake_v3.gcl\
 		zippedRacerHorizon=Apps/Racer/Horizon-256x16.rgb\
@@ -80,12 +80,11 @@ dev128k7.rom: Core/* Apps/*/* Makefile interface.json
 		Boot=Apps/CardBoot/CardBoot_v2.gt1\
 		Main=Apps/MainMenu/MainMenu.gcl\
 		Reset=Core/Reset.gcl
-	cp dev.rom $@
-	cp dev.lst $(@:.rom=.lst)
 
 # Development towards "ROM v7"
 dev7.rom: Core/* Apps/*/* Makefile interface.json
 	python3 Core/dev.asm.py\
+		-DROMNAME=\"$@\"\
 		Snake=Apps/Snake/Snake_v3.gcl\
 		zippedRacerHorizon=Apps/Racer/Horizon-256x16.rgb\
 		SYS_Racer_v1.py\
@@ -105,8 +104,6 @@ dev7.rom: Core/* Apps/*/* Makefile interface.json
 		Boot=Apps/CardBoot/CardBoot_v2.gt1\
 		Main=Apps/MainMenu/MainMenu.gcl\
 		Reset=Core/Reset.gcl
-	cp dev.rom $@
-	cp dev.lst $(@:.rom=.lst)
 
 run: Docs/gtemu $(DEV)
 	# Run ROM in reference emulator on console
