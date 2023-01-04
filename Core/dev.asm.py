@@ -2190,12 +2190,16 @@ ld([vPC+1],Y)                   #13
 
 # Instruction POKEA (39 xx), 28 cycles
 # * Store word [xx] at location [vAC]
+# * Origin: https://forum.gigatron.io/viewtopic.php?p=2053#p2053
+#   Section 2. "POKE and DOKE work backwards"
 label('POKEA_v7')
 ld(hi('pokea#13'),Y)            #10,12
 jmp(Y,'pokea#13')               #11
 
 # Instruction DOKEA (3b xx), 28 cycles
 # * Store word [xx] at location [vAC]
+# * Origin: https://forum.gigatron.io/viewtopic.php?p=2053#p2053
+#   Section 2. "POKE and DOKE work backwards"
 label('DOKEA_v7')
 ld(hi('dokea#13'),Y)            #10
 jmp(Y,'dokea#13')               #11+overlap
@@ -2203,21 +2207,23 @@ jmp(Y,'dokea#13')               #11+overlap
 # Instruction DEEKA (3d xx), 30 cycles
 # * Load word at location [vAC] and store into [xx]
 # * Uses sysArgs7 as a scratch register
+# * Origin: https://forum.gigatron.io/viewtopic.php?p=2053#p2053
+#   Section 2. "POKE and DOKE work backwards"
 label('DEEKA_v7')
 ld(hi('deeka#13'),Y)            #10,12
 jmp(Y,'deeka#13')               #11
 
 # Instruction JEQ (3f ll hh), 26 cycles (was EQ)
-# * Original idea from at67
 # * Branch if zero (if(vACL==0)vPC=hhll[+2])
+# * Original idea from at67
 label('EQ')
 label('JEQ_v7')
 ld(hi('jeq#13'),Y)              #10,12
 jmp(Y,'jeq#13')                 #11
 
 # Instruction DEEKV (41 vv), 28 cycles
-# * Original idea from at67
 # * shortcut for LDW(vv);DEEK()
+# * Original idea from at67
 label('DEEKV_v7')
 ld(hi('deekv#13'),Y)            #10,12
 jmp(Y,'deekv#13')               #11
@@ -2334,8 +2340,8 @@ nop()                           #10,12
 nop()                           #11
 
 # Instruction JNE (72 ii jj), 26 cycles (was NE)
-# * Original idea from at67
 # * Branch if not zero (if(vACL!=0)vPC=iijj)
+# * Original idea from at67
 label('NE')
 label('JNE_v7')
 ld(hi('jne#13'),Y)              #10
@@ -3316,10 +3322,12 @@ jmp(Y,'REENTER')                #42
 #       application from ROM v1. It requires the ROM data be organized
 #       with trampoline3a and trampoline3b fragments, and their address
 #       in ROM to be known. Better avoid using this.
-#
 # Variables:
 #       sysArgs[0:2]    Bytes (out)
 #       sysArgs[6:7]    ROM pointer (in)
+
+fillers(until = 0xb9)
+assert pc() == 0x6b9
 
 label('SYS_Read3_40')
 ld([sysArgs+7],Y)               #15,32
@@ -3368,51 +3376,13 @@ def trampoline3b():
 #       sysArgs[0:2]    Packed bytes (in)
 #       sysArgs[0:3]    Pixels (out)
 
+fillers(until = 0xc0)
+assert pc() == 0x6c0
 label('SYS_Unpack_56')
-ld(soundTable>>8,Y)             #15
-ld([sysArgs+2])                 #16 a[2]>>2
-ora(0x03,X)                     #17
-ld([Y,X])                       #18
-st([sysArgs+3])                 #19 -> Pixel 3
+ld(hi('unpack#18'),Y)           #15
+jmp(Y,'unpack#18')              #16
+ld([vTicks])                    #17
 
-ld([sysArgs+2])                 #20 (a[2]&3)<<4
-anda(0x03)                      #21
-adda(AC)                        #22
-adda(AC)                        #23
-adda(AC)                        #24
-adda(AC)                        #25
-st([sysArgs+2])                 #26
-ld([sysArgs+1])                 #27 | a[1]>>4
-ora(0x03,X)                     #28
-ld([Y,X])                       #29
-ora(0x03,X)                     #30
-ld([Y,X])                       #31
-ora([sysArgs+2])                #32
-st([sysArgs+2])                 #33 -> Pixel 2
-
-ld([sysArgs+1])                 #34 (a[1]&15)<<2
-anda(0x0f)                      #35
-adda(AC)                        #36
-adda(AC)                        #37
-st([sysArgs+1])                 #38
-
-ld([sysArgs+0])                 #39 | a[0]>>6
-ora(0x03,X)                     #40
-ld([Y,X])                       #41
-ora(0x03,X)                     #42
-ld([Y,X])                       #43
-ora(0x03,X)                     #44
-ld([Y,X])                       #45
-ora([sysArgs+1])                #46
-st([sysArgs+1])                 #47 -> Pixel 1
-
-ld([sysArgs+0])                 #48 a[1]&63
-anda(0x3f)                      #49
-st([sysArgs+0])                 #50 -> Pixel 0
-
-ld(hi('REENTER'),Y)             #51
-jmp(Y,'REENTER')                #52
-ld(-56/2)                       #53
 
 #-----------------------------------------------------------------------
 #       v6502 right shift instruction
@@ -7150,6 +7120,63 @@ jmp(Y,'NEXT')                   #26
 ld(-28/2)                       #27
 
 
+#-----------------------------------------------------------------------
+# SYS_Unpack displaced implementation
+#-----------------------------------------------------------------------
+
+# This has been displaced to make space in page 6
+# for native code fragments that use the shift table.
+
+label('unpack#18')
+adda(min(0,maxTicks-60))        #18
+blt('unpack#21')                #19 restart
+ld(soundTable>>8,Y)             #20
+ld([sysArgs+2])                 #21 a[2]>>2
+ora(0x03,X)                     #22
+ld([Y,X])                       #23
+st([sysArgs+3])                 #24 -> Pixel 3
+ld([sysArgs+2])                 #25 (a[2]&3)<<4
+anda(0x03)                      #26
+adda(AC)                        #27
+adda(AC)                        #28
+adda(AC)                        #29
+adda(AC)                        #30
+st([sysArgs+2])                 #31
+ld([sysArgs+1])                 #32 | a[1]>>4
+ora(0x03,X)                     #33
+ld([Y,X])                       #34
+ora(0x03,X)                     #35
+ld([Y,X])                       #36
+ora([sysArgs+2])                #37
+st([sysArgs+2])                 #38 -> Pixel 2
+ld([sysArgs+1])                 #39 (a[1]&15)<<2
+anda(0x0f)                      #40
+adda(AC)                        #41
+adda(AC)                        #42
+st([sysArgs+1])                 #42
+ld([sysArgs+0])                 #44 | a[0]>>6
+ora(0x03,X)                     #45
+ld([Y,X])                       #46
+ora(0x03,X)                     #47
+ld([Y,X])                       #48
+ora(0x03,X)                     #49
+ld([Y,X])                       #50
+ora([sysArgs+1])                #51
+st([sysArgs+1])                 #52 -> Pixel 1
+ld([sysArgs+0])                 #53 a[1]&63
+anda(0x3f)                      #54
+st([sysArgs+0])                 #55 -> Pixel 0
+ld(hi('NEXTY'),Y)               #56
+jmp(Y,'NEXTY')                  #57
+ld(-60/2)                       #58
+
+label('unpack#21')
+ld([vPC])                       #21
+suba(2)                         #22
+st([vPC])                       #23
+ld(hi('NEXTY'),Y)               #24
+jmp(Y,'NEXTY')                  #25
+ld(-28/2)                       #26
 
 
 #-----------------------------------------------------------------------
@@ -7271,7 +7298,6 @@ ld(0)                           #19
 
 # Instruction DOKEI (35 62 ih il), 28 cycles
 # * Store immediate word ihil at location [vAC]
-# * Original idea from at67
 oplabel('DOKEI_v7')
 ld([Y,X])                       #14
 st([Y,Xpp])                     #15
@@ -7413,6 +7439,8 @@ ld(-26/2)                       #24
 # * Handles page crossings. Peak rate 10 bytes/scanline.
 # * On return, T3 and T2 contain the next addresses
 #   and vAC contains the number of bytes left to copy.
+# * Origin: this is an improved version of the copy
+#   opcode I wrote for ROMvX0.
 oplabel('COPY_v7')
 ld('copy#3a')                   #14
 ld(hi('copy#18'),Y)             #15
@@ -7423,6 +7451,8 @@ st([fsmState])                  #17
 # * Copy nn bytes from [T3] to [T2].
 # * Handles page crossings. Peak rate 10 bytes/scanline.
 # * On return, T3 and T2 contain the next addresses.
+# * Origin: this is an improved version of the copy
+#   opcode I wrote for ROMvX0.
 oplabel('COPYN_v7')
 ld([Y,X])                       #14
 st([sysArgs+6])                 #15
@@ -7443,6 +7473,7 @@ ld([vTmp])                      #27
 # Instruction MOVL (35 dd yy xx), 28+30 cycles
 # * Move four bytes long from [xx] to [yy]
 # * No page crossings, trashes sysArgs,T0,T1
+# * Origin: https://forum.gigatron.io/viewtopic.php?p=2322#p2322
 oplabel('MOVL_v7')
 bra('fsm18op2#16')              #14
 ld('movl#3a')                   #15
@@ -7450,6 +7481,7 @@ ld('movl#3a')                   #15
 # Instruction MOVF (35 df yy xx), 28+24+22 cycles
 # * Move five bytes float from [xx] to [yy]
 # * No page crossings, trashes sysArgs,T0,T1
+# * Origin: https://forum.gigatron.io/viewtopic.php?p=2322#p2322
 oplabel('MOVF_v7')
 bra('fsm18op2#16')              #14
 ld('movf#3a')                   #15
