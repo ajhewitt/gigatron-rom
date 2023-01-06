@@ -408,27 +408,28 @@ userVars        = zpByte(0)
 # Start of safely usable bytes under ROMv4
 userVars_v4     = zpByte(0)
 vIrqSave        = zpByte(5) # saved vcpu context during virq
-vB0             = zpByte(1) # FAC sign
-# Start of safely usable bytes under ROMv5
+reserved3       = zpByte(1) # unused
+# Start of safely usable bytes under ROMv5,6,7
 userVars_v5     = zpByte(0)
-# Start of safely usable bytes under ROMv6
 userVars_v6     = zpByte(0)
-# Start of safely usable bytes under ROMv7
-vB1             = zpByte(1) # FAC exponent
-vB2             = zpByte(1) # LAC extension byte
-vLAC            = zpByte(4) # LAC register
-vT2             = zpByte(2) # T2 register
-vT3             = zpByte(2) # T3 register
 userVars_v7     = zpByte(0)
 
-# [0x80]
-# Constant 0x01.
-zpReset(0x80)
-oneConst        = zpByte(1)
-userVars2       = zpByte(0)
+# [0x80] Constant 0x01
+oneConst        = 0x80
 
-# Warning: One should avoid using SYS_ExpanderControl
-# under ROMv4 becauses it overwrites 0x81.
+zpReset(0x81)                 # Second variable zone
+userVars2       = zpByte(0)
+userVars2_v4    = zpByte(0)+1 # ROMv4's ctrlBits at 0x81!!!
+userVars2_v5    = zpByte(0)
+userVars2_v6    = zpByte(0)
+vB0             = zpByte(1)   # FAC sign
+vB1             = zpByte(1)   # FAC exponent
+vB2             = zpByte(0)   # Overlaps vLAX[0]
+vLAX            = zpByte(1)   # Extended long accumulator (40 bits)
+vLAC            = zpByte(4)   # Long accumulator (32 bits)
+vT2             = zpByte(2)   # T2 register
+vT3             = zpByte(2)   # T3 register
+userVars2_v7    = zpByte(0)   
 
 
 #-----------------------------------------------------------------------
@@ -8271,35 +8272,40 @@ disableListing()
 define('memSize',    memSize)
 for i in range(3):
   define('entropy%d' % i, entropy+i)
-define('videoY',     videoY)
-define('frameCount', frameCount)
-define('serialRaw',  serialRaw)
-define('buttonState',buttonState)
-define('xoutMask',   xoutMask)
-define('vPC',        vPC)
-define('vAC',        vAC)
-define('vACH',       vAC+1)
-define('vLR',        vLR)
-define('vSP',        vSP)
-define('vTmp',       vTmp)      # Not in interface.json
-define('romType',    romType)
-define('sysFn',      sysFn)
+define('videoY',       videoY)
+define('frameCount',   frameCount)
+define('serialRaw',    serialRaw)
+define('buttonState',  buttonState)
+define('xoutMask',     xoutMask)
+define('vPC',          vPC)
+define('vAC',          vAC)
+define('vACH',         vAC+1)
+define('vLR',          vLR)
+define('vSP',          vSP)
+define('vTmp',         vTmp)      # Not in interface.json
+define('romType',      romType)
+define('sysFn',        sysFn)
 for i in range(8):
   define('sysArgs%d' % i, sysArgs+i)
-define('soundTimer', soundTimer)
-define('ledState_v2',ledState_v2)
-define('ledTempo',   ledTempo)
-define('userVars',   userVars)
-define('userVars_v4',userVars_v4)
-define('userVars_v5',userVars_v5)
-define('userVars_v6',userVars_v6)
+define('soundTimer',   soundTimer)
+define('ledState_v2',  ledState_v2)
+define('ledTempo',     ledTempo)
+define('userVars',     userVars)
+define('userVars_v4',  userVars_v4)
+define('userVars_v5',  userVars_v5)
+define('userVars_v6',  userVars_v6)
+define('userVars_v7',  userVars_v7)
+define('userVars2',    userVars2)
+define('userVars2_v4', userVars2_v4)
+define('userVars2_v5', userVars2_v5)
+define('userVars2_v6', userVars2_v6)
 define('vB0_v7'     ,vB0)
 define('vB1_v7'     ,vB1)
 define('vB2_v7'     ,vB2)
 define('vLAC_v7'    ,vLAC)
 define('vT2_v7'     ,vT2)
 define('vT3_v7'     ,vT3)
-define('userVars_v7',userVars_v7)
+define('userVars2_v7', userVars2_v7)
 define('videoTable', videoTable)
 define('ledTimer',   ledTimer)
 define('vIRQ_v5',    vIRQ_v5)
