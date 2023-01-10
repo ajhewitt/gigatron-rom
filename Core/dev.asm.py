@@ -422,9 +422,8 @@ userVars2       = zpByte(0)
 userVars2_v4    = zpByte(0)+1 # ROMv4's ctrlBits at 0x81!!!
 userVars2_v5    = zpByte(0)
 userVars2_v6    = zpByte(0)
-vB0             = zpByte(1)   # FAC sign
-vB1             = zpByte(1)   # FAC exponent
-vB2             = zpByte(0)   # Overlaps vLAX[0]
+vFAS            = zpByte(1)   # FAC sign
+vFAE            = zpByte(1)   # FAC exponent
 vLAX            = zpByte(1)   # Extended long accumulator (40 bits)
 vLAC            = zpByte(4)   # Long accumulator (32 bits)
 vT2             = zpByte(2)   # T2 register
@@ -9473,9 +9472,9 @@ define('userVars2',    userVars2)
 define('userVars2_v4', userVars2_v4)
 define('userVars2_v5', userVars2_v5)
 define('userVars2_v6', userVars2_v6)
-define('vB0_v7'     ,vB0)
-define('vB1_v7'     ,vB1)
-define('vB2_v7'     ,vB2)
+define('vFAS_v7'    ,vFAS)
+define('vFAE_v7'    ,vFAE)
+define('vLAX_v7'    ,vLAX)
 define('vLAC_v7'    ,vLAC)
 define('vT2_v7'     ,vT2)
 define('vT3_v7'     ,vT3)
