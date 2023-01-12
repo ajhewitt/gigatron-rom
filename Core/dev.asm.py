@@ -2363,9 +2363,12 @@ st([vAC+1])                     #12
 bra('NEXTY')                    #13
 ld(-16/2)                       #14
 
-# Instruction slot (7d ..)
-nop()
-nop()
+# Instruction MULQ (7d kk)
+# * Execute multiplication code 0x1kk
+# * 1*:shift; 01*:add; 00?*:sub; allzero:exit
+label('MULQ_v7')
+ld(hi('mulq#13'),Y)
+jmp(Y,'mulq#13')
 
 # Instruction LUP: ROM lookup (vAC=ROM[vAC+D]), 26 cycles
 label('LUP')
@@ -7588,7 +7591,7 @@ ld(hi('softReset#20'),Y)        #17
 jmp(Y,'softReset#20')           #18
 ld(0)                           #19
 
-# Instruction DOKEI (35 62 ih il), 28 cycles
+# Instruction DOKEI (35 62 ih il), 30 cycles
 # * Store immediate word ihil at location [vAC]
 oplabel('DOKEI_v7')
 ld([Y,X])                       #14
@@ -9321,7 +9324,7 @@ ld(-26/2)                       #25
 
 #-----------------------------------------------------------------------
 #
-#   $1D00 ROM page 29: FSM1D for vCPU helpers
+#   $1D00 ROM page 29: FSM1D
 #
 #-----------------------------------------------------------------------
 
@@ -9497,11 +9500,122 @@ adda(1,Y)                       #13
 jmp(Y,'REENTER')                #14
 ld(-18/2)                       #15
 
+#----------------------------------------
+# MULQ
+
+label('mulq#13')
+st([sysArgs+6])                 #13
+ld([vAC])                       #14
+st([sysArgs+4])                 #15
+anda(0x80,X)                    #16
+adda(AC)                        #17
+st([vAC])                       #18
+ld([vAC+1])                     #19
+st([sysArgs+5])                 #20
+adda(AC)                        #21
+adda([X])                       #22
+st([vAC+1])                     #23
+ld('mulq#3a')                   #24
+st([fsmState])                  #25
+ld(hi('FSM1D_ENTER'))           #26
+st([vCpuSelect])                #27
+bra('NEXT')                     #28
+ld(-30/2)                       #29
+
+label('mulq#3a')
+ld([sysArgs+6])                 #3
+blt('mulq1#6a')                 #4
+adda(AC)                        #5
+beq('mulqz#8a')                 #6 mulq0
+bgt('mulq00#9a')                #7
+adda(AC)                        #8 mulq01
+st([sysArgs+6])                 #9
+ld([vAC])                       #10
+adda([sysArgs+4])               #11
+st([vAC])                       #12
+bmi(pc()+4)                     #13
+suba([sysArgs+4])               #14
+bra(pc()+4)                     #15
+ora([sysArgs+4])                #16
+nop()                           #15
+anda([sysArgs+4])               #16
+anda(0x80,X)                    #17
+ld([X])                         #18
+adda([vAC+1])                   #19
+adda([sysArgs+5])               #20
+st([vAC+1])                     #21
+bra('NEXT')                     #22
+ld(-24/2)                       #23
+
+label('mulq00#9a')
+adda(AC)                        #9
+st([sysArgs+6])                 #10
+ld([vAC])                       #11
+bmi(pc()+5)                     #12
+suba([sysArgs+4])               #13
+st([vAC])                       #14
+bra(pc()+5)                     #15
+ora([sysArgs+4])                #16
+st([vAC])                       #14
+nop()                           #15
+anda([sysArgs+4])               #16
+anda(0x80,X)                    #17
+ld([vAC+1])                     #18
+suba([sysArgs+5])               #19
+suba([X])                       #20
+st([vAC+1])                     #21
+bra('NEXT')                     #22
+ld(-24/2)                       #23
+
+label('mulqz#8a')
+ld(hi('ENTER'))                 #8
+st([vCpuSelect])                #9
+adda(1,Y)                       #10
+jmp(Y,'NEXTY')                  #11
+ld(-14/2)                       #12
+
+label('mulq1#6a')
+blt('mulq11#8a')                #6
+st([sysArgs+6])                 #7
+ld([vAC])                       #8
+anda(0x80,X)                    #9
+adda(AC)                        #10
+st([vAC])                       #11
+ld([vAC+1])                     #12
+adda(AC)                        #13
+adda([X])                       #14
+st([vAC+1])                     #15
+bra('NEXT')                     #16
+ld(-18/2)                       #17
+
+label('mulq11#8a')
+adda(AC)                        #8
+st([sysArgs+6])                 #9
+ld([vAC])                       #10
+anda(0x80,X)                    #11
+adda(AC)                        #12
+st([vAC])                       #13
+ld([vAC+1])                     #14
+adda(AC)                        #15
+adda([X])                       #16
+st([vAC+1])                     #17
+ld([vAC])                       #18
+anda(0x80,X)                    #19
+adda(AC)                        #20
+st([vAC])                       #21
+ld([vAC+1])                     #22
+adda(AC)                        #23
+adda([X])                       #24
+st([vAC+1])                     #25
+bra('NEXT')                     #26
+ld(-28/2)                       #27
+
+
 
 
 #-----------------------------------------------------------------------
 #
-#   $1E00 ROM page 30: more vCPU ops
+#   $1e00 ROM page 30: more vCPU ops
 #
 #-----------------------------------------------------------------------
 
