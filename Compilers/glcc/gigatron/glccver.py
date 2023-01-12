@@ -1,1 +1,0 @@
-ver="GLCC_RELEASE_1.5-55-g7548bff"
