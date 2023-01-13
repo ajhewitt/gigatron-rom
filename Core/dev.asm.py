@@ -3839,17 +3839,25 @@ st([Y,Xpp])                     #30
 st([Y,Xpp])                     #31
 ld([sysArgs+2])                 #32 Advance write pointer
 adda(8)                         #33
-st([sysArgs+2])                 #34
+st([sysArgs+2],X)               #34 Also X for self-restart
 ld([sysArgs+0])                 #35
-beq(pc()+3)                     #36
-bra(pc()+3)                     #37
-ld(-2)                          #38 Self-restart when more to do
-ld(0)                           #38(!)
-adda([vPC])                     #39
-st([vPC])                       #40
-ld(hi('REENTER'),Y)             #41
-jmp(Y,'REENTER')                #42
-ld(-46/2)                       #43
+bne('.sysSb#38f')               #36
+ld(hi('REENTER'),Y)             #37 Done.
+jmp(Y,'REENTER')                #38
+ld(-42/2)                       #39
+label('.sysSb#38f')
+ld(-26/2)                       #38 Not yet done.
+adda([vTicks])                  #13 = 39 - 26
+st([vTicks])                    #14
+adda(min(0,maxTicks-(26+26)/2)) #15
+bge('sys_SetMemory#18')         #16 Self-dispatch when enough time
+ld([sysArgs+0])                 #17 AC and X as expected
+ld(-2)                          #18 Self-restart otherwise
+adda([vPC])                     #19
+st([vPC])                       #20
+ld(hi('REENTER'),Y)             #21
+jmp(Y,'REENTER')                #22
+ld(-26/2)                       #23
 
 # SYS_SetMode_80 implementation
 label('sys_SetMode')
