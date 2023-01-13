@@ -315,7 +315,10 @@ vCpuSelect      = zpByte() # Active interpreter page
 entropy         = zpByte(2)
 
 # Former entropy+2
-reserved1       = zpByte(1)
+if WITH_128K_BOARD:
+    ctrlVideo   = zpByte() # ctrl bits for video access
+else:
+    reserved1   = zpByte()
 
 # Visible video
 videoY          = zpByte() # Counts up from 0 to 238 in steps of 2
@@ -351,7 +354,7 @@ vPC             = zpByte(2) # Interpreter program counter, points into RAM
 vAC             = zpByte(2) # Interpreter accumulator, 16-bits
 vLR             = zpByte(2) # Return address, for returning after CALL
 vSP             = zpByte(1) # Stack pointer
-vTmp            = zpByte()
+vScratch        = zpByte()  # Scratch byte
 vReturn         = zpByte()  # Return into video loop (in page of vBlankStart)
 
 # Scratch
@@ -384,17 +387,16 @@ fsmState        = sysArgs+7
 soundTimer      = zpByte()
 
 # Former ledTimer
-reserved2       = zpByte()
-
-# Fow now the LED state machine itself is hard-coded in the program ROM
-ledState_v2     = zpByte() # Current LED state
-ledTempo        = zpByte() # Next value for ledTimer after LED state change
-
-
 if WITH_128K_BOARD:
-  ctrlBitsVideo = reserved1
-  ctrlBitsCopy  = reserved2
+  ctrlCopy      = zpByte() # ctrl bits for vcpu access
+else:
+  reserved2     = zpByte()
 
+# LED state machine
+ledState_v2     = zpByte() # Current LED state
+
+# Former ledTempo
+vTmp            = zpByte() # Scratch byte
 
 # Management of free space in page zero (userVars)
 # * Programs that only use the features of ROMvx can
@@ -407,8 +409,7 @@ userVars        = zpByte(0)
 
 # Start of safely usable bytes under ROMv4
 userVars_v4     = zpByte(0)
-vIrqSave        = zpByte(5) # saved vcpu context during virq
-reserved3       = zpByte(1) # unused
+vIrqSave        = zpByte(6) # saved vcpu context during virq
 # Start of safely usable bytes under ROMv5,6,7
 userVars_v5     = zpByte(0)
 userVars_v6     = zpByte(0)
@@ -441,10 +442,10 @@ userVars2_v7    = zpByte(0)
 videoTable      = 0x0100 # Indirection table: Y[0] dX[0]  ..., Y[119] dX[119]
 
 vReset          = 0x01f0
-ledTimer        = 0x01f2 # (displaced) Ticks until next LED change
-entropy2        = 0x01f3 # (displaced) Entropy hidden state
-reserved4       = 0x01f4
-reserved5       = 0x01f5
+entropy2        = 0x01f2 # (displaced) Entropy hidden state
+reserved3       = 0x01f3
+ledTimer        = 0x01f4 # (displaced) Ticks until next LED change
+ledTempo        = 0x01f5 # (displaced) Led timer reset value
 vIRQ_v5         = 0x01f6
 ctrlBits        = 0x01f8
 videoTop_v5     = 0x01f9 # Number of skip lines
@@ -601,9 +602,9 @@ ctrl(0b01111100)                # Disable SPI slaves, enable RAM, bank 1
 # bit15 --------- MOSI = 0
 
 if WITH_128K_BOARD:
-  ld(0x7c)
-  st([ctrlBitsVideo])
-  st([ctrlBitsCopy])
+  ld(0x7c)                      # Initialize ctrlBits aliases
+  st([ctrlVideo])               # - for video access
+  st([ctrlCopy])                # - for vcou access
 
 # Simple RAM test and size check by writing to [1<<n] and see if [0] changes or not.
 ld(1)                           # Quick RAM test and count
@@ -770,8 +771,8 @@ ctrl(0b01111100)                #36 Default state.
 ld([vTmp])                      #37 Always load after ctrl
 if WITH_128K_BOARD:
   ld(0x7c)                      #38
-  st([ctrlBitsVideo])           #39
-  st([ctrlBitsCopy])            #40
+  st([ctrlVideo])               #39
+  st([ctrlCopy])            #40
   ld(-32/2)                     #41-32=9
 else:
   nop()                         #38 adjust vticks
@@ -1235,7 +1236,7 @@ bra('.leds#66')                 #64 Single-instruction subroutine
 label('.leds#56')
 bge('.leds#58')                 #56
 ld([ledState_v2])               #57
-ld([ledTempo])                  #58
+ld([Y,ledTempo])                #58
 st([Y,ledTimer])                #59
 bra(pc()+1)                     #60
 nop()                           #61,62
@@ -1298,10 +1299,10 @@ if WITH_128K_BOARD:
   # Rebuild ctrlBits{Video,Copy} since Y=1
   # at the cost of 4 extra cycles.
   ld([Y,ctrlBits])              #+1
-  st([ctrlBitsCopy],X)          #+2
+  st([ctrlCopy],X)          #+2
   anda(0x3c)                    #+3
   ora(0x40)                     #+4
-  st([ctrlBitsVideo])           #+5
+  st([ctrlVideo])               #+5
   ctrl(X)                       #+6 next must be a load
   extra += 6
 
@@ -1781,7 +1782,7 @@ if WITH_512K_BOARD:
 elif WITH_128K_BOARD:
 
   assert pc() == 0x1fe
-  ld([ctrlBitsVideo],X)           #199
+  ld([ctrlVideo],X)               #199
   bra('sound3')                   #200,0 <New scan line start>
   align(0x100, size=0x100)
   ctrl(X)                         #1 Reset banking to page1.
@@ -1921,7 +1922,7 @@ elif WITH_128K_BOARD:
   #
   # Alternative for pixel burst: faster application mode
   label('nopixels')
-  ld([ctrlBitsCopy],X)            #38
+  ld([ctrlCopy],X)            #38
   ctrl(X)                         #39
   runVcpu(199-40,
           'ABCD line 40-520',
@@ -2206,7 +2207,6 @@ jmp(Y,'dokea#13')               #11+overlap
 
 # Instruction DEEKA (3d xx), 30 cycles
 # * Load word at location [vAC] and store into [xx]
-# * Trashes sysArgs7
 # * Origin: https://forum.gigatron.io/viewtopic.php?p=2053#p2053
 #   Section 2. "POKE and DOKE work backwards"
 label('DEEKA_v7')
@@ -2459,12 +2459,12 @@ label('.sys#13')
 ld(hi('.sys#16'),Y)              #13,12
 jmp(Y,'.sys#16')                 #14
 
-# Instruction LDVI (b1 vv hh ll)
+# Instruction STWI (b1 vv hh ll)
 # * Stores immediate $hhll into word variable [vv]
 # * Trashes sysArgs[7]
-label('LDVI_v7')
-ld(hi('ldvi#13'),Y)             #10
-jmp(Y,'ldvi#13')                #11
+label('STWI_v7')
+ld(hi('stwi#13'),Y)             #10
+jmp(Y,'stwi#13')                #11
 st([sysArgs+7])                 #12
 
 # Instruction SYS: Native call, <=256 cycles (<=128 ticks, in reality less)
@@ -4437,14 +4437,14 @@ if WITH_512K_BOARD:
   jmp(Y,'sysEx#30')                   #28 jump to a place with more space
   ld([vAC+1])                         #29
 elif WITH_128K_BOARD:
-  st([ctrlBitsCopy],X)                #24
+  st([ctrlCopy],X)                    #24
   anda(0x3c)                          #25
   ora(0x40)                           #26
-  st([ctrlBitsVideo])                 #27
+  st([ctrlVideo])                     #27
   label('sysEx#28')
   ld([vAC+1],Y)                       #28
   ctrl(Y,X)                           #29 issue ctrl code
-  ld([ctrlBitsCopy])                  #30 always read after ctrl
+  ld([ctrlCopy])                      #30 always read after ctrl
   ld(hi('REENTER'),Y)                 #31
   jmp(Y,'REENTER')                    #32
   ld(-36/2)                           #33
@@ -4452,7 +4452,7 @@ elif WITH_128K_BOARD:
   anda(0xfc,X)                        #22 special ctrl code
   ld([vAC+1],Y)                       #23
   ctrl(Y,X)                           #24 issue special code
-  ld([ctrlBitsCopy],X)                #25 from last time (hopefully)
+  ld([ctrlCopy],X)                    #25 from last time (hopefully)
   bra('sysEx#28')                     #26
   nop()                               #27
 else:
@@ -8138,13 +8138,13 @@ ld([vAC+1],Y)                   #14
 ld([vAC])                       #15
 adda(1,X)                       #16
 ld([Y,X])                       #17 hi
-st([sysArgs+7])                 #18
+st([vScratch])                  #18
 ld([vAC],X)                     #19
 ld([Y,X])                       #20 lo
 ld([vTmp],X)                    #21
 ld(0,Y)                         #22
 st([Y,Xpp])                     #23
-ld([sysArgs+7])                 #24
+ld([vScratch])                  #24
 st([Y,Xpp])                     #25
 ld(hi('NEXTY'),Y)               #26
 jmp(Y,'NEXTY')                  #27
@@ -8282,8 +8282,8 @@ ld(hi('REENTER'),Y)             #17 vACH!=0:
 jmp(Y,'REENTER')                #18
 ld(-22/2)                       #19
 
-# LDVI implementation
-label('ldvi#13')
+# STWI implementation
+label('stwi#13')
 ld([vPC+1],Y)                   #13
 ld([vPC])                       #14
 adda(2)                         #15
@@ -9766,7 +9766,6 @@ for i in range(8):
   define('sysArgs%d' % i, sysArgs+i)
 define('soundTimer',   soundTimer)
 define('ledState_v2',  ledState_v2)
-define('ledTempo',     ledTempo)
 define('userVars',     userVars)
 define('userVars_v4',  userVars_v4)
 define('userVars_v5',  userVars_v5)
@@ -9784,7 +9783,8 @@ define('vT2_v7'     ,vT2)
 define('vT3_v7'     ,vT3)
 define('userVars2_v7', userVars2_v7)
 define('videoTable', videoTable)
-define('ledTimer',   ledTimer)
+define('ledTimer_v7',ledTimer)
+define('ledTempo_v7',ledTempo)
 define('vIRQ_v5',    vIRQ_v5)
 define('ctrlBits_v5',ctrlBits)
 define('videoTop_v5',videoTop_v5)
