@@ -2143,11 +2143,13 @@ ld(-20/2)                       #18
 
 # Instruction LD: Load byte from zero page (vAC=[D]), 22 cycles
 label('LD')
-ld(AC,X)                        #10,19
-ld([X])                         #11
-ld(hi('ld#15'),Y)               #12
-jmp(Y,'ld#15')                  #13
-st([vAC])                       #14
+ld(hi('ld#13'),Y)               #10
+jmp(Y,'ld#13')                  #11+overlap
+
+# Instuction slot (1c ..)
+nop()
+nop()
+nop()
 
 # Instruction CMPHS: Adjust high byte for signed compare (vACH=XXX), 28 cycles
 label('CMPHS_v5')
@@ -2335,16 +2337,18 @@ nop()                           #11
 nop()                           #10,12
 nop()                           #11
 
-# Instruction slot (70 ..)
-nop()                           #10,12
-nop()                           #11
+# Instruction INCV (70 vv), 22-28 cycles
+# * Increment word [vv]
+label('INCV_v7')
+ld(hi('incv#13'),Y)             #10,12
+jmp(Y,'incv#13')                #11
 
 # Instruction JNE (72 ii jj), 26 cycles (was NE)
 # * Branch if not zero (if(vACL!=0)vPC=iijj)
 # * Original idea from at67
 label('NE')
 label('JNE_v7')
-ld(hi('jne#13'),Y)              #10
+ld(hi('jne#13'),Y)              #10,12
 jmp(Y,'jne#13')                 #11
 nop()                           #12
 
@@ -2684,17 +2688,14 @@ ld(hi('NEXTY'),Y)               #20
 jmp(Y,'NEXTY')                  #21
 ld(-24/2)                       #22
 
-# Clear vACH (continuation of ANDI and LD instructions)
+# ANDI implementation
 label('andi#13')
-nop()                           #13
-st([vAC])                       #14
-#
-label('ld#15')
-ld(0)                           #15 Clear high byte
-st([vAC+1])                     #16
-ld(hi('REENTER'),Y)             #17
-jmp(Y,'REENTER')                #18
-ld(-22/2)                       #19
+st([vAC])                       #13
+ld(0)                           #14
+st([vAC+1])                     #15
+ld(hi('NEXTY'),Y)               #16
+jmp(Y,'NEXTY')                  #17
+ld(-20/2)                       #18
 
 # ADDI implementation
 label('addi')
@@ -7361,7 +7362,60 @@ jmp(Y,'NEXTY')                  #25
 ld(-28/2)                       #26
 
 #-----------------------------------------------------------------------
-# Open space
+# vCPU op implementation
+
+# INCV implementation
+label('incv#13')
+ld(AC,X)                        #13
+ld([X])                         #14
+adda(1)                         #15
+beq('incv#18')                  #16
+st([X])                         #17
+ld(hi('NEXTY'),Y)               #18
+jmp(Y,'NEXTY')                  #19
+ld(-22/2)                       #20
+label('incv#18')
+ld(0,Y)                         #18
+st([Y,Xpp])                     #19
+ld([Y,X])                       #20
+adda(1)                         #21
+st([Y,X])                       #22
+ld(hi('REENTER'),Y)             #23
+jmp(Y,'REENTER')                #24
+ld(-28/2)                       #25
+
+# MOVQB implementation
+label('movqb#13')
+ld([vPC+1],Y)                   #13
+st([vTmp])                      #14
+st([Y,Xpp])                     #15
+ld([Y,X])                       #16
+ld([vTmp],X)                    #17
+st([X])                         #18
+ld([vPC])                       #19
+adda(1)                         #20
+st([vPC])                       #21
+ld(hi('NEXTY'),Y)               #22
+jmp(Y,'NEXTY')                  #23
+ld(-26/2)                       #24
+
+# MOVQW implementation
+label('movqw#13')
+st([vTmp])                      #13
+st([Y,Xpp])                     #14
+ld([Y,X])                       #15
+ld([vTmp],X)                    #16
+ld(0,Y)                         #17
+st([Y,Xpp])                     #18
+ld(0)                           #19
+st([Y,X])                       #20
+ld([vPC])                       #21
+adda(1)                         #22
+st([vPC])                       #23
+ld(hi('NEXTY'),Y)               #24
+jmp(Y,'NEXTY')                  #25
+ld(-28/2)                       #26
+
 
 
 
@@ -8406,7 +8460,8 @@ st([vPC])                       #17
 ld(hi('NEXTY'),Y)               #18
 jmp(Y,'NEXTY')                  #19
 ld(-22/2)                       #20
-label('jccn#20')                # pass 26 cycles (with AC=1)
+label('jccn#19')                # pass 26 cycles (with AC=1)
+ld(1)                           #19
 adda([vPC])                     #20
 st([vPC])                       #21
 ld(hi('NEXTY'),Y)               #22
@@ -8431,9 +8486,8 @@ bmi('jccn#15')                  #13
 ora([vAC])                      #14
 bne('jccy#17')                  #15
 ld([vPC+1],Y)                   #16
-ld(1)                           #17
-bra('jccn#20')                  #18
-nop()                           #19
+bra('jccn#19')                  #17
+nop()                           #18
 
 # JLE implementation (24-26/26) [with vACH in AC]
 label('jle#13')
@@ -8441,9 +8495,20 @@ bmi('jccy#15')                  #13
 ora([vAC])                      #14
 beq('jccy#17')                  #15
 ld([vPC+1],Y)                   #16
-ld(1)                           #17
-bra('jccn#20')                  #18
-nop()                           #19
+bra('jccn#19')                  #17
+nop()                           #18
+
+# LD implementation
+label('ld#13')
+ld(AC,X)                        #13
+ld([X])                         #14
+st([vAC])                       #15
+ld(0)                           #16
+st([vAC+1])                     #17
+ld(hi('NEXTY'),Y)               #18
+jmp(Y,'NEXTY')                  #19
+ld(-22/2)                       #20
+
 
 #-----------------------------------------------------------------------
 #
@@ -9628,38 +9693,6 @@ ld(-28/2)                       #27
 #-----------------------------------------------------------------------
 
 align(0x100, size=0x100)
-
-# MOVQB implementation
-label('movqb#13')
-ld([vPC+1],Y)                   #13
-st([vTmp])                      #14
-st([Y,Xpp])                     #15
-ld([Y,X])                       #16
-ld([vTmp],X)                    #17
-st([X])                         #18
-ld([vPC])                       #19
-adda(1)                         #20
-st([vPC])                       #21
-ld(hi('NEXTY'),Y)               #22
-jmp(Y,'NEXTY')                  #23
-ld(-26/2)                       #24
-
-# MOVQW implementation
-label('movqw#13')
-st([vTmp])                      #13
-st([Y,Xpp])                     #14
-ld([Y,X])                       #15
-ld([vTmp],X)                    #16
-ld(0,Y)                         #17
-st([Y,Xpp])                     #18
-ld(0)                           #19
-st([Y,X])                       #20
-ld([vPC])                       #21
-adda(1)                         #22
-st([vPC])                       #23
-ld(hi('NEXTY'),Y)               #24
-jmp(Y,'NEXTY')                  #25
-ld(-28/2)                       #26
 
 # ALLOC implementation
 label('alloc#13')
