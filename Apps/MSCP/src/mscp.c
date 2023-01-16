@@ -305,7 +305,7 @@ static int32_t rnd(void)
 		for (i=0; i != 165; i++)
 			rnd();
 	}
-	/* Subtrative business here */
+	/* Subtractive business here */
 	if (si) si--; else si=54;
 	if (sj) sj--; else sj=54;
 	if ((x = state[si] - state[sj]) < 0)
