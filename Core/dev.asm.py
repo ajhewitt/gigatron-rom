@@ -6329,10 +6329,10 @@ label('.sysCm#64')
 ld(-52/2)                            #64
 adda([vTicks])                       #13 = 65 - 52
 st([vTicks])                         #14
-adda(min(0,maxTicks-(26+52)/2))      #15   could probably be min(0,maxTicks-(26+52)/2)
-bge('sys_CopyMemory')                #16
+adda(min(0,maxTicks-(26+52)/2))      #15
+bge('sys_CopyMemory')                #16 self-dispatch
 ld([vAC])                            #17
-ld(-2)                               #18   notime
+ld(-2)                               #18 restart
 adda([vPC])                          #19
 st([vPC])                            #20
 ld(hi('REENTER'),Y)                  #21
@@ -7835,7 +7835,7 @@ adda(1,Y)                       #23
 jmp(Y,'NEXT')                   #24
 ld(-26/2)                       #25
 
-# Instruction MOVL (35 db yy xx), 28+30 cycles
+# Instruction MOVL (35 db yy xx), 30+30 cycles
 # * Move four bytes long from [xx] to [yy]
 # * No page crossings, trashes sysArgs,T0,T1
 # * Origin: https://forum.gigatron.io/viewtopic.php?p=2322#p2322
@@ -7843,7 +7843,7 @@ oplabel('MOVL_v7')
 bra('fsm18op2#16')              #14
 ld('movl#3a')                   #15
 
-# Instruction MOVF (35 dd yy xx), 28+24+22 cycles
+# Instruction MOVF (35 dd yy xx), 30+24+22 cycles
 # * Move five bytes float from [xx] to [yy]
 # * No page crossings, trashes sysArgs,T0,T1
 # * Origin: https://forum.gigatron.io/viewtopic.php?p=2322#p2322
@@ -8120,14 +8120,53 @@ bra('NEXT')                     #26
 ld(-28/2)                       #27
 
 label('copy#17a')
-ld('copy#3d')                   #17 -> slow final state
-st([fsmState])                  #18
-nop()                           #19
-bra('NEXT')                     #20
-ld(-22/2)                       #21
+ld([sysArgs+6])                 #17
+suba(1)                         #18
+beq(pc()+3)                     #19
+bra(pc()+3)                     #20
+ld('copy#3d')                   #21 -> copy2+
+ld('copy#3e')                   #21 -> copy1final
+st([fsmState])                  #22
+nop()                           #23
+bra('NEXT')                     #24
+ld(-26/2)                       #25
 
 label('copy#3d')
-ld([vT3],X)                     #3 copy 1
+ld([vT3+1],Y)                   #3 copy2+
+ld([vT3])                       #4
+adda(1,X)                       #5
+ld([Y,X])                       #6
+st([vTmp])                      #7
+ld([vT3],X)                     #8
+ld([Y,X])                       #9
+ld([vT2],X)                     #10
+ld([vT2+1],Y)                   #11
+st([Y,Xpp])                     #12
+ld([vTmp])                      #13
+st([Y,X])                       #14
+ld([vT3])                       #15
+adda(2)                         #16
+st([vT3])                       #17
+ld([vT2])                       #18
+adda(2)                         #19
+st([vT2])                       #20
+ld([sysArgs+6])                 #21
+suba(2)                         #22
+bne('copy#25d')                 #23
+ld(hi('NEXTY'),Y)               #24 exit
+ld(hi('ENTER'))                 #25
+st([vCpuSelect])                #26
+jmp(Y,'NEXTY')                  #27
+ld(-30/2)                       #28
+label('copy#25d')
+st([sysArgs+6])                 #25
+ld('copy#3a')                   #26
+st([fsmState])                  #27
+bra('NEXT')                     #28
+ld(-30/2)                       #29
+
+label('copy#3e')
+ld([vT3],X)                     #3 copy1final
 ld([vT3+1],Y)                   #4
 ld([Y,X])                       #5
 ld([vT2],X)                     #6
@@ -8139,27 +8178,11 @@ st([vT3])                       #11
 ld([vT2])                       #12
 adda(1)                         #13
 st([vT2])                       #14
-ld([sysArgs+6])                 #15
-suba(1)                         #16
-st([sysArgs+6])                 #17
-beq('copy#20d')                 #18
-blt('copy#21d')                 #19
-bgt('NEXT')                     #20
-ld(-22/2)                       #21
-label('copy#20d')
-ld(hi('NEXTY'),Y)               #20 exit
-ld(hi('ENTER'))                 #21
-st([vCpuSelect])                #22
-jmp(Y,'NEXTY')                  #23
-ld(-26/2)                       #24
-label('copy#21d')
-ld('copy#3a')                   #21
-st([fsmState])                  #22
-nop()                           #23
-bra('NEXT')                     #24
-ld(-26/2)                       #25
-
-
+ld(hi('ENTER'))                 #15 exit
+st([vCpuSelect])                #16
+adda(1,Y)                       #17
+jmp(Y,'REENTER')                #18
+ld(-22/2)                       #19
 
 
 #-----------------------------------------------------------------------
