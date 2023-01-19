@@ -46,6 +46,7 @@
     "CMPIS_v7"         : "0x03d9",
     "CMPIU_v7"         : "0x03db",
     "PEEKV_v7"         : "0x03dd",
+    "PEEKA_v7"         : "0x03e1",
 
     "ADDL_v7"          : "0x3500",
     "ADDX_v7"          : "0x3502",
@@ -62,8 +63,12 @@
     "LSRXA_v7"         : "0x3518",
     "RORX_v7"          : "0x351a",
     "MACX_v7"          : "0x351c",
-    "INCVL_v7"         : "0x351f",
-    
+    "LDLAC_v7"         : "0x351e",
+    "STLAC_v7"         : "0x3520",
+    "INCVL_v7"         : "0x3523",
+    "STFAC_v7"         : "0x3525",
+    "LDFAC_v7"         : "0x3527", 
+    "LDFARG_v7"        : "0x3529",
     "NEGV_v7"          : "0x3537",
     "RDIVS_v7"         : "0x3539",
     "RDIVU_v7"         : "0x353b",
