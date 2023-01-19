@@ -16,13 +16,13 @@ core.o: core.c core.h
 	${GLCC} -rom=${ROM} -DBOOKSIZE=`wc -c < book.bin` -c $<
 
 dumpbook: mscp.c
-	${CC} -DSAVE_BOOK_BIN=1 -DSUBTRACTIVE_RND=1 -DMAXBOOKSIZE=10000 mscp.c -o dumpbook
+	${CC} -DSAVE_BOOK_BIN=1 -DSUBTRACTIVE_RND=1 -DMAXBOOKSIZE=13000 mscp.c -o dumpbook
 
-book.bin: # dumpbook book.txt mscp.c
+book.bin: dumpbook book.txt mscp.c Makefile
 	./dumpbook
 
-../book.gt1: book.bin
-	python3 bintogt1.py book.bin $@
+../book.gt1: #book.bin
+	python3 bintogt1.py --addr=0xc000 book.bin $@
 
 clean:
 	-rm ${OBJS} ${PGMS} dumpbook mscp

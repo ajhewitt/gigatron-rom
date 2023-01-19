@@ -13,8 +13,8 @@ near int bkindex = -1;         /* Current book table index */
 struct tt ttentry;             /* Current transposition table entry */
 struct bk bkentry;             /* Current book table entry */
 
-#define BKPTR ((struct bk*)(0x8000))
-#define TTPTR ((struct tt*)(0xC000))
+#define BKPTR ((struct bk*)(0xC000))
+#define TTPTR ((struct tt*)(0x8000))
 
 void set_computing_mode(int enabled)
 {

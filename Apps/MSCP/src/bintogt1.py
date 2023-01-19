@@ -16,12 +16,12 @@ def bintogt1(argv):
             description='Converts a raw binary file into a GT1 file')
         parser.add_argument('bin', type=str, help='input file')
         parser.add_argument('gt1', type=str, help='output file')
-        parser.add_argument('--addr', type=int, help='gt1 start address',
-                            action='store', default=0x8000 )
+        parser.add_argument('--addr', type=str, help='gt1 start address',
+                            action='store', default='0x8000' )
         args = parser.parse_args(argv)
         with open(args.bin,"rb") as fd:
             data = fd.read()
-        save_gt1(args.gt1, data, args.addr)
+        save_gt1(args.gt1, data, int(args.addr, 0))
         return 0
     except FileNotFoundError as err:
         print(str(err), file=sys.stderr)
