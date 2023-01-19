@@ -2145,13 +2145,10 @@ label('LD')
 ld(hi('ld#13'),Y)               #10
 jmp(Y,'ld#13')                  #11+overlap
 
-# Instuction POPV (1c vv), 36 cycles (+10 when crossing page)
-# * Pop word [vv] from the stack: [vv]=*vSP vSP+=2
-# * Trashes sysArgs7 but can POPV(sysArgs6or7)
-label('POPV_v7')
-ld(hi('popv#13'),Y)             #10
-jmp(Y,'popv#13')                #11
-st([sysArgs+7])                 #12
+# Instruction slot (1c ..)
+nop()                           #10
+nop()                           #11
+nop()                           #12
 
 # Instruction CMPHS: Adjust high byte for signed compare (vACH=XXX), 28 cycles
 label('CMPHS_v5')
@@ -2584,11 +2581,9 @@ label('ALLOC')
 ld(hi('alloc#13'),Y)            #10,12
 jmp(Y,'alloc#13')               #11
 
-# Instruction PUSHV (e1 vv) 36 cycles (+8 when crossing page)
-# * Pushes word [vv] on stack: vSP-=2 *vSP=[vv]
-label('PUSHV_v7')
-ld(hi('pushv#13'),Y)            #10
-jmp(Y,'pushv#13')               #11
+# Instruction slot (e1 ..)
+nop()                           #10,12
+nop()                           #11
 
 # The instructions below are all implemented in the second code page. Jumping
 # back and forth makes each 6 cycles slower, but it also saves space in the
@@ -9811,72 +9806,6 @@ adda(1,Y)                       #25
 jmp(Y,'REENTER')                #26
 ld(-30/2)                       #27
 
-
-#----------------------------------------
-# LDLW
-
-# Restarts
-label('restart1e#22')
-ld([vPC])                       #22
-suba(2)                         #23
-st([vPC])                       #24
-ld(hi('REENTER'),Y)             #25
-jmp(Y,'REENTER')                #26
-ld(-30/2)                       #27
-
-# LDLW implementation
-label('ldlw#13')
-adda([vSP])                     #13
-st([vTmp],X)                    #14
-ld([vSP+1])                     #15
-bne('ldlw#18')                  #16
-ld(0,Y)                         #17
-ld([Y,X])                       #18
-st([Y,Xpp])                     #19
-st([vAC])                       #20
-ld([Y,X])                       #21
-st([vAC+1])                     #22
-ld(hi('REENTER'),Y)             #23
-jmp(Y,'REENTER')                #24
-ld(-28/2)                       #25
-
-label('ldlw#18')
-ld([vTicks])                    #18 vSPL/vSPH version
-adda(min(0,maxTicks-38/2))      #19
-blt('restart1e#22')             #20
-ld([vTmp])                      #21
-bmi('ldlw#24')                  #22
-suba([vSP])                     #23
-ora([vSP])                      #24
-bmi(pc()+3)                     #25
-bra(pc()+3)                     #26
-ld(0)                           #27
-ld(1)                           #27
-adda([vSP+1],Y)                 #28
-ld([Y,X])                       #29
-st([Y,Xpp])                     #30
-st([vAC])                       #31
-ld([Y,X])                       #32
-st([vAC+1])                     #33
-ld(hi('NEXTY'),Y)               #34
-jmp(Y,'NEXTY')                  #35
-ld(-38/2)                       #36
-label('ldlw#24')
-anda([vSP])                     #24
-bmi(pc()+3)                     #25
-bra(pc()+3)                     #26
-ld(0)                           #27
-ld(1)                           #27
-adda([vSP+1],Y)                 #28
-ld([Y,X])                       #29
-st([Y,Xpp])                     #30
-st([vAC])                       #31
-ld([Y,X])                       #32
-st([vAC+1])                     #33
-ld(hi('NEXTY'),Y)               #34
-jmp(Y,'NEXTY')                  #35
-ld(-38/2)                       #36
-
 # ----------------------------------------
 # LSLXA
 
@@ -10009,10 +9938,6 @@ jmp(Y,'REENTER')                #24
 ld(-28/2)                       #25
 
 # Restarts
-label('restart1f#18')
-nop()                           #18
-label('restart1f#19')
-nop()                           #19
 label('restart1f#20')
 nop()                           #20
 label('restart1f#21')
@@ -10024,16 +9949,6 @@ st([vPC])                       #24
 ld(hi('REENTER'),Y)             #25
 jmp(Y,'REENTER')                #26
 ld(-30/2)                       #27
-
-# Second restarts
-label('restart1f#25')
-ld([vPC])                       #25
-label('restart1f#26')
-suba(2)                         #26
-st([vPC])                       #27
-ld(hi('NEXTY'),Y)               #28
-jmp(Y,'NEXTY')                  #29
-ld(-32/2)                       #30 
 
 # PUSH implementation
 label('push#13')
@@ -10073,53 +9988,6 @@ st([vPC])                       #32
 ld(hi('REENTER'),Y)             #33
 jmp(Y,'REENTER')                #34
 ld(-38//2)                      #35
-
-# PUSHV implementation
-label('pushv#13')
-adda(1,X)                       #13
-st([vTmp])                      #14
-ld([vTicks])                    #15
-adda(min(0,maxTicks-36/2))      #16
-blt('restart1f#19')             #17
-ld([vSP])                       #18
-beq('pushv#21')                 #19
-suba(2)                         #20
-st([vSP])                       #21
-ld([vSP+1],Y)                   #22
-ld([X])                         #23
-ld([vTmp],X)                    #24
-st([vTmp])                      #25
-ld([X])                         #26
-ld([vSP],X)                     #27
-st([Y,Xpp])                     #28
-ld([vTmp])                      #29
-st([Y,X])                       #30
-ld(hi('REENTER'),Y)             #31
-jmp(Y,'REENTER')                #32
-ld(-36/2)                       #33
-label('pushv#21')
-ld([vTicks])                    #21 carry
-adda(min(0,maxTicks-44/2))      #22
-blt('restart1f#25')             #23 second restart
-ld(0xfe)                        #24
-st([vSP])                       #25
-ld([vSP+1])                     #26
-beq(pc()+3)                     #27
-bra(pc()+3)                     #28
-suba(1)                         #29
-nop()                           #29!
-st([vSP+1],Y)                   #30
-ld([X])                         #31
-ld([vTmp],X)                    #32
-st([vTmp])                      #33
-ld([X])                         #34
-ld([vSP],X)                     #35
-st([Y,Xpp])                     #36
-ld([vTmp])                      #37
-st([Y,X])                       #38
-ld(hi('REENTER'),Y)             #39
-jmp(Y,'REENTER')                #40
-ld(-44/2)                       #41
 
 # POP implementation
 label('pop#13')
@@ -10163,56 +10031,6 @@ ld(hi('REENTER'),Y)             #35
 jmp(Y,'REENTER')                #36
 ld(-40//2)                      #37
 
-# POPV implementation
-label('popv#13')
-ld([vSP+1],Y)                   #13
-ld([vTicks])                    #14
-adda(min(0,maxTicks-38/2))      #15
-blt('restart1f#18')             #16
-ld([vSP])                       #17
-st([vTmp])                      #18
-adda(2)                         #19
-beq('popv#22')                  #20
-suba(1,X)                       #21
-st([vSP])                       #22
-ld([Y,X])                       #23
-ld([vTmp],X)                    #24
-st([vTmp])                      #25
-ld([Y,X])                       #26
-ld(0,Y)                         #27
-ld([sysArgs+7],X)               #28
-st([Y,Xpp])                     #29
-ld([vTmp])                      #30
-st([Y,X])                       #31
-ld(hi('NEXTY'),Y)               #32
-jmp(Y,'NEXTY')                  #33
-ld(-36/2)                       #34
-label('popv#22')
-ld([vTicks])                    #22 carry
-adda(min(0,maxTicks-46/2))      #23
-blt('restart1f#26')             #24 second restart
-ld([vPC])                       #25
-ld(0)                           #26
-st([vSP])                       #27
-ld([vSP+1])                     #28
-beq(pc()+3)                     #29
-bra(pc()+3)                     #30
-adda(1)                         #31
-nop()                           #31!
-st([vSP+1])                     #32
-ld([Y,X])                       #33
-ld([vTmp],X)                    #34
-st([vTmp])                      #35
-ld([Y,X])                       #36
-ld(0,Y)                         #37
-ld([sysArgs+6],X)               #38
-st([Y,Xpp])                     #39
-ld([vTmp])                      #40
-st([Y,X])                       #41
-ld(hi('NEXTY'),Y)               #42
-jmp(Y,'NEXTY')                  #43
-ld(-46/2)                       #44
-
 # STLW implementation
 label('stlw#13')
 adda([vSP])                     #13
@@ -10251,6 +10069,60 @@ st([Y,X])                       #33
 ld(hi('NEXTY'),Y)               #34
 jmp(Y,'NEXTY')                  #35
 ld(-38/2)                       #36
+
+# LDLW implementation
+label('ldlw#13')
+adda([vSP])                     #13
+st([vTmp],X)                    #14
+ld([vSP+1])                     #15
+bne('ldlw#18')                  #16
+ld(0,Y)                         #17
+ld([Y,X])                       #18
+st([Y,Xpp])                     #19
+st([vAC])                       #20
+ld([Y,X])                       #21
+st([vAC+1])                     #22
+ld(hi('REENTER'),Y)             #23
+jmp(Y,'REENTER')                #24
+ld(-28/2)                       #25
+
+label('ldlw#18')
+ld([vTicks])                    #18 vSPL/vSPH version
+adda(min(0,maxTicks-38/2))      #19
+blt('restart1f#22')             #20
+ld([vTmp])                      #21
+bmi('ldlw#24')                  #22
+suba([vSP])                     #23
+ora([vSP])                      #24
+bmi(pc()+3)                     #25
+bra(pc()+3)                     #26
+ld(0)                           #27
+ld(1)                           #27
+adda([vSP+1],Y)                 #28
+ld([Y,X])                       #29
+st([Y,Xpp])                     #30
+st([vAC])                       #31
+ld([Y,X])                       #32
+st([vAC+1])                     #33
+ld(hi('NEXTY'),Y)               #34
+jmp(Y,'NEXTY')                  #35
+ld(-38/2)                       #36
+label('ldlw#24')
+anda([vSP])                     #24
+bmi(pc()+3)                     #25
+bra(pc()+3)                     #26
+ld(0)                           #27
+ld(1)                           #27
+adda([vSP+1],Y)                 #28
+ld([Y,X])                       #29
+st([Y,Xpp])                     #30
+st([vAC])                       #31
+ld([Y,X])                       #32
+st([vAC+1])                     #33
+ld(hi('NEXTY'),Y)               #34
+jmp(Y,'NEXTY')                  #35
+ld(-38/2)                       #36
+
 
 #-----------------------------------------------------------------------
 #
