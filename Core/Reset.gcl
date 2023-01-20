@@ -320,12 +320,7 @@ PrintS!
 
 { Change into default video mode }
 \SYS_SetMode_v2_80 _sysFn=      {!!! Not in ROM v1 !!!}
-
-$a, $fc& $fc^ [if=0             { Test for 512k rom }
-  2    { yes: Mode 2 -> "A-C-" }
- else
-  1    { no:  Mode 1 -> "ABC-"}
-] 80!!
+2 80!!                          {Mode 2}
 
 { Try booting from memory card if there is an expansion card and at least 64K }
 CtrlBits, [if<>0 \memSize, [if=0 CheckCard!]]

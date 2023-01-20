@@ -21,7 +21,7 @@ void set_computing_mode(int enabled)
   if (enabled)
     SYS_SetMode(3);
   else
-    SYS_SetMode(1);
+    SYS_SetMode(2);
 }
 
 void clr_ttable(void)
