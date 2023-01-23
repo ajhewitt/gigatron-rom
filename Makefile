@@ -73,19 +73,27 @@ dev128k7.rom: Core/* Apps/*/* Makefile interface.json
 dev7.rom: Core/* Apps/*/* Makefile interface.json
 	python3 Core/dev.asm.py\
 		-DROMNAME=\"$@\"\
-		zippedRacerHorizon=Apps/Racer/Horizon-256x16.rgb\
+		Snake=Apps/Snake/Snake_v3.gcl\
 		SYS_Racer_v1.py\
+		zippedRacerHorizon=Apps/Racer/Horizon-256x16.rgb\
 		Racer=Apps/Racer/Racer_v3.gcl\
-		TinyBASIC=Apps/TinyBASIC/TinyBASIC_v6.gcl\
-		MSCP=Apps/MSCP/mscp.gt1\
-		MSCPbook=Apps/MSCP/book.gt1\
+		Mandelbrot=Apps/Mandelbrot/Mandelbrot_v2.gt1\
 		Loader=Apps/Loader/Loader.gcl\
-		WozMon=Apps/WozMon/WozMon.gcl\
-		Credits=Apps/Credits/Credits.gt1\
+		Bricks=Apps/Bricks/Bricks_v2.gt1\
+		Invader=Apps/Invader/Invader_v1.gt1\
+		TinyBASIC=Apps/TinyBASIC/TinyBASIC_v6.gcl\
+		TicTac=Apps/TicTac/LoadTicTac_v1.gcl\
+		TicTacGtb=Apps/TicTac/TicTac_v2.gtb\
+		WozMon=Apps/WozMon/WozMon_v2.gcl\
+		Apple1=Apps/Apple-1/Apple-1_v3.gt1\
+		MSBASIC=Apps/MSBASIC/MSBASIC_v1.gt1\
+		Credits=Apps/Credits/Credits_v4.gt1\
 		Egg=Apps/Horizon/Horizon_c.gt1\
 		Boot=Apps/CardBoot/CardBoot_v2.gt1\
-		Main=Apps/MainMenu/MainMenu.gcl\
+		Main=Apps/MainMenu/MainMenu_v6.gcl\
 		Reset=Core/Reset.gcl
+
+
 
 run: Docs/gtemu $(DEV)
 	# Run ROM in reference emulator on console
