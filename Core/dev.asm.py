@@ -7630,7 +7630,7 @@ ld('ldfac#3a')                  #15
 # * This instruction is intended for the runtime.
 #   Store the exponent of MFP number at [vAC..vAC+4] into v2L,
 #   store its 40 bits extended mantissa in sysArgs[04],
-#   set bit 0 of vFAE if it sign differs from FAC's.
+#   sets bit 0 of vFAS to indicate if it sign differs from FAC's.
 # * Trashes T3, sysArgs[567]
 oplabel('LDFARG_v7')
 bra('fsm1eop0#16')              #14
