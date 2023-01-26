@@ -25,5 +25,23 @@ book.bin: dumpbook book.txt mscp.c Makefile
 	python3 bintogt1.py --addr=0xc000 book.bin $@
 
 clean:
-	-rm ${OBJS} ${PGMS} dumpbook mscp
+	-rm ${OBJS} *.gt1 *.prf *.frg prof.txt dumpbook mscp
+
+
+# Profiling support
+
+GTSIM=gtsim -rom ../../../dev128k7.rom
+GTPROF=gtprof
+CFILES=${OBJS:.o=.c}
+
+prof.txt: mscp-sim.prf
+	${GTPROF} mscp-sim.prf mscp-sim.frg | sort -nr > $@
+
+mscp-sim.gt1: ${CFILES} mscp.ovl
+	${GLCC} -rom=${ROM} -map=sim,allout,./mscp.ovl \
+	    -DREPEATABLE_RND=1 ${CFILES} -o $@ --frags > mscp-sim.frg
+
+mscp-sim.prf: mscp-sim.gt1 prof.in
+	${GTSIM} -prof $@ mscp-sim.gt1 < prof.in
+
 

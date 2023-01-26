@@ -89,7 +89,7 @@ enum {                  /* 64 squares */
 static byte board[64+3]; /* Board state */
 
 static near int ply;    /* Number of half-moves made in game and search */
-#define WTM (~ply & 1)  /* White-to-move predicate */
+#define WTM ((ply&1)^1) /* White-to-move predicate */
 
 static byte castle[64]; /* Which pieces may participate in castling */
 #define CASTLE_WHITE_KING  1
@@ -109,9 +109,14 @@ struct side {           /* Attacks */
 };
 static struct side white, black;
 static struct side * near friend, * near enemy;
+/* fast access */
+static byte * near whitepawns = white.pawns;
+static byte * near blackpawns = black.pawns;
+static byte * near whiteattack = white.attack;
+static byte * near blackattack = black.attack;
+
 
 static uint16_t history[64*64]; /* History-move heuristic counters */
-
 static int8_t   undo_stack[6*1024]; /* Move undo administration */
 static uint32_t hash_stack[1024]; /* History of hashes, for repetition */
 static int8_t  * near undo_sp;
@@ -280,8 +285,9 @@ static int32_t rnd_seed = 1;
 static int32_t rnd(void)
 {
 	/* Subtractive rnd avoids costly multiplications */
-	static int32_t state[55], x;
-	static int si=0, sj=0;
+	static int32_t state[55];
+        static near int32_t x;
+	static near int si=0, sj=0;
 	if (si == sj || rnd_seed != x) {
 		/* Initialization */
 		int i,j;
@@ -490,15 +496,15 @@ static void setup_board(char *fen)
  |      attack tables                                                   |
  +----------------------------------------------------------------------*/
 
-static void atk_slide(int sq, byte dirs, struct side *s)
+static void atk_slide(int sq, byte bdirs, struct side *s)
 {
-        byte dir = 0;
+        int dirs = bdirs;
+        int dir = 0;
         int to;
 
         dirs &= king_dirs[sq];
         do {
-                dir -= dirs;
-                dir &= dirs;
+                dir = (dir - dirs) & dirs;
                 to = sq;
                 do {
                         to += king_step[dir];
@@ -511,7 +517,7 @@ static void atk_slide(int sq, byte dirs, struct side *s)
 static void compute_attacks(void)
 {
         int sq, to, pc;
-        byte dir, dirs;
+        int dir, dirs;
 
         memset(&white, 0, sizeof white);
         memset(&black, 0, sizeof black);
@@ -529,10 +535,9 @@ static void compute_attacks(void)
                         white.king = sq;
                         dirs = king_dirs[sq];
                         do {
-                                dir -= dirs;
-                                dir &= dirs;
+                                dir = (dir - dirs) & dirs;
                                 to = sq + king_step[dir];
-                                white.attack[to] += 1;
+                                whiteattack[to] += 1;
                         } while (dirs -= dir);
                         break;
 
@@ -541,10 +546,9 @@ static void compute_attacks(void)
                         black.king = sq;
                         dirs = king_dirs[sq];
                         do {
-                                dir -= dirs;
-                                dir &= dirs;
+                                dir = (dir - dirs) & dirs;
                                 to = sq + king_step[dir];
-                                black.attack[to] += 1;
+                                blackattack[to] += 1;
                         } while (dirs -= dir);
                         break;
 
@@ -576,10 +580,9 @@ static void compute_attacks(void)
                         dir = 0;
                         dirs = knight_dirs[sq];
                         do {
-                                dir -= dirs;
-                                dir &= dirs;
+                                dir = (dir - dirs) & dirs;
                                 to = sq + knight_jump[dir];
-                                white.attack[to] += 1;
+                                whiteattack[to] += 1;
                         } while (dirs -= dir);
                         break;
 
@@ -587,30 +590,29 @@ static void compute_attacks(void)
                         dir = 0;
                         dirs = knight_dirs[sq];
                         do {
-                                dir -= dirs;
-                                dir &= dirs;
+                                dir = (dir - dirs) & dirs;
                                 to = sq + knight_jump[dir];
-                                black.attack[to] += 1;
+                                blackattack[to] += 1;
                         } while (dirs -= dir);
                         break;
 
                 case WHITE_PAWN:
-                        white.pawns[1+F(sq)] += 1;
+                        whitepawns[1+F(sq)] += 1;
                         if (F(sq) != FILE_H) {
-                                white.attack[sq + DIR_N + DIR_E] += 1;
+                                whiteattack[sq + DIR_N + DIR_E] += 1;
                         }
                         if (F(sq) != FILE_A) {
-                                white.attack[sq + DIR_N - DIR_E] += 1;
+                                whiteattack[sq + DIR_N - DIR_E] += 1;
                         }
                         break;
 
                 case BLACK_PAWN:
-                        black.pawns[1+F(sq)] += 1;
+                        blackpawns[1+F(sq)] += 1;
                         if (F(sq) != FILE_H) {
-                                black.attack[sq - DIR_N + DIR_E] += 1;
+                                blackattack[sq - DIR_N + DIR_E] += 1;
                         }
                         if (F(sq) != FILE_A) {
-                                black.attack[sq - DIR_N - DIR_E] += 1;
+                                blackattack[sq - DIR_N - DIR_E] += 1;
                         }
                         break;
                 }
@@ -751,11 +753,11 @@ static int push_move(int fr, int to)
 
         /* does the destination square look safe? */
         if (WTM) {
-                if (black.attack[to] != 0) { /* defended */
+                if (blackattack[to] != 0) { /* defended */
                         prescore -= prescore_piece_value[board[fr]];
                 }
         } else {
-                if (white.attack[to] != 0) { /* defended */
+                if (whiteattack[to] != 0) { /* defended */
                         prescore -= prescore_piece_value[board[fr]];
                 }
         }
@@ -919,7 +921,7 @@ static void generate_moves(unsigned treshold)
                                 to += DIR_N;
                                 if (board[to] == EMPTY) {
                                         if (push_move(fr, to))
-                                        if (black.attack[to-DIR_N]) {
+                                        if (blackattack[to-DIR_N]) {
                                                 move_sp[-1].move |= SPECIAL;
                                         }
                                 }
@@ -948,7 +950,7 @@ static void generate_moves(unsigned treshold)
                                 to -= DIR_N;
                                 if (board[to] == EMPTY) {
                                         if (push_move(fr, to))
-                                        if (white.attack[to+DIR_N]) {
+                                        if (whiteattack[to+DIR_N]) {
                                                 move_sp[-1].move |= SPECIAL;
                                         }
                                 }
@@ -1525,7 +1527,7 @@ static void compute_piece_square_tables(void)
                         case WHITE_PAWN:
                                 score = +100;
                                 score += pawn_advance[sq];
-                                if (!black.pawns[file]) {
+                                if (!blackpawns[file]) {
                                         score += pawn_advance[sq];
                                 }
                                 break;
@@ -1533,7 +1535,7 @@ static void compute_piece_square_tables(void)
                         case BLACK_PAWN:
                                 score = -100;
                                 score -= pawn_advance[FLIP(sq)];
-                                if (!white.pawns[file]) {
+                                if (!whitepawns[file]) {
                                         score -= pawn_advance[FLIP(sq)];
                                 }
                                 break;
@@ -1556,86 +1558,85 @@ static int white_control[64] = {
           1,  1,  1,  1,  2,  2,  2,  2,
 };
 
+
 static int evaluate(void)
 {
         int sq;
         int score = 0;
-
         int white_has, black_has;
+        static byte misspen[] = { 0, 5, 20, 45 };
 
         /*
          *  stage 1: material+piece_square tables
          */
         for (sq=0; sq<64; sq++) {
-                int file;
-
-                if (board[sq] == EMPTY) continue;
-                score += piece_square[board[sq]-1][sq];
-
-                file = F(sq)+1;
-                switch (board[sq]) {
-                case WHITE_PAWN:
-                {
-                        int missing;
-                        if (white.pawns[file] > 1) {
-                                score -= 15;
+                if (board[sq] != EMPTY) {
+                        register int file = F(sq)+1;
+                        score += piece_square[board[sq]-1][sq];
+                        switch (board[sq]) {
+                        case WHITE_PAWN: {
+                                register int missing = 0;
+                                if (whitepawns[file] > 1)
+                                        score -= 15;
+                                if (!whitepawns[file-1])
+                                        missing++;
+                                if (!whitepawns[file+1])
+                                        missing++;
+                                if (!blackpawns[file])
+                                        missing++;
+                                score -= misspen[missing];
+                                break;
                         }
-                        missing = !white.pawns[file-1] + !white.pawns[file+1] +
-                                !black.pawns[file];
-                        score -= missing * missing * 5;
-                        break;
-                }
-                case BLACK_PAWN:
-                {
-                        int missing;
-                        if (black.pawns[file] > 1) {
-                                score += 15;
+                        case BLACK_PAWN: {
+                                register int missing = 0;
+                                if (blackpawns[file] > 1)
+                                        score += 15;
+                                if (!blackpawns[file-1])
+                                        missing++;
+                                if (!blackpawns[file+1])
+                                        missing++;
+                                if (!whitepawns[file])
+                                        missing++;
+                                score -= misspen[missing];
+                                break;
                         }
-                        missing = !black.pawns[file-1] + !black.pawns[file+1] +
-                                !white.pawns[file];
-                        score += missing * missing * 5;
-                        break;
-                }
-                case WHITE_ROOK:
-                        if (!white.pawns[file]) {
-                                score += 10;
-                                if (!black.pawns[file]) {
+                        case WHITE_ROOK: {
+                                if (!whitepawns[file]) {
                                         score += 10;
+                                        if (!blackpawns[file])
+                                                score += 10;
                                 }
+                                break;
                         }
-                        break;
-
-                case BLACK_ROOK:
-                        if (!black.pawns[file]) {
-                                score -= 10;
-                                if (!white.pawns[file]) {
+                        case BLACK_ROOK:
+                                if (!blackpawns[file]) {
                                         score -= 10;
+                                        if (!whitepawns[file])
+                                                score -= 10;
                                 }
+                                break;
+                        default:
+                                break;
                         }
-                        break;
-
-                default:
-                        break;
                 }
         }
-
+        
         /*
          *  stage 2: board control
          */
         white_has = 0;
         black_has = 0;
         for (sq=0; sq<64; sq++) {
-                if (white.attack[sq] > black.attack[sq]) {
+                int cmp = whiteattack[sq] - blackattack[sq];
+                if (cmp > 0)
                         white_has += white_control[sq];
-                }
-                if (white.attack[sq] < black.attack[sq]) {
+                else if (cmp < 0) 
                         black_has += white_control[FLIP(sq)];
-                }
         }
         score += (white_has - black_has);
-
+        
         /* some noise to randomize play */
-        score += (hash_stack[ply] ^ rnd_seed) % 17 - 8;
+        score += (int)(hash_stack[ply] ^ rnd_seed) % 17 - 8;
 
         return WTM ? score : -score;
 }
@@ -2029,7 +2030,9 @@ static void cmd_new(char *dummy)
         load_book("book.txt");
         computer[0] = 0;
         computer[1] = 1;
-#ifdef __gigatron__
+#if REPEATABLE_RND
+        rnd_seed = 1;
+#elif __gigatron__
 	rnd_seed = ((long)rand() << 16) | (long)rand();
 #else
         rnd_seed = time(NULL);
