@@ -18,10 +18,12 @@ struct bk bkentry;             /* Current book table entry */
 
 void set_computing_mode(int enabled)
 {
+#ifndef REPEATABLE_RND
   if (enabled)
     SYS_SetMode(3);
   else
     SYS_SetMode(2);
+#endif
 }
 
 void clr_ttable(void)
