@@ -9911,7 +9911,6 @@ ld([vAC])                       #18
 st([Y,Xpp])                     #19
 ld([vAC+1])                     #20
 st([Y,X])                       #21
-label('fsm1enexty#22')
 ld(hi('ENTER'))                 #22
 st([vCpuSelect])                #23
 adda(1,Y)                       #24
@@ -10062,16 +10061,16 @@ ld([vAC],X)                     #3
 ld([vAC+1],Y)                   #4
 ld(vLAX)                        #5
 st([vT3+1])                     #6
-ld('ldfac#3c')                  #7
-st([fsmState])                  #8
-ld([Y,X])                       #9
-beq('ldfac#12a')                #10
-st([vFAE])                      #11 exponent
-st([Y,Xpp])                     #12
-ld([vAC])                       #13
-anda(0xfc)                      #14
-xora(0xfc)                      #15
-beq('ldfac#18a')                #16
+ld([Y,X])                       #7
+beq('ldfac#10a')                #8
+st([vFAE])                      #9 exponent
+st([Y,Xpp])                     #10
+ld([vAC])                       #11
+anda(0xfc)                      #12
+xora(0xfc)                      #13
+beq('ldfac#16a')                #14
+ld('ldfac#3c')                  #15
+st([fsmState])                  #16
 ld([Y,X])                       #17 no crossings
 st([Y,Xpp])                     #18
 st([vLAX+4])                    #19
@@ -10086,31 +10085,30 @@ st([vLAX+1])                    #27
 bra('NEXT')                     #28
 ld(-30/2)                       #29
 
-label('ldfac#12a')
-ld([vT3+1],X)                   #12 zero
-ld(0,Y)                         #13
+label('ldfac#10a')
+ld([vT3+1],X)                   #10 zero
+ld(0,Y)                         #11
+st([Y,Xpp])                     #12
+st([Y,Xpp])                     #13
 st([Y,Xpp])                     #14
 st([Y,Xpp])                     #15
-st([Y,Xpp])                     #16
-st([Y,Xpp])                     #17
-st([Y,X])                       #18
-nop()                           #19
-bra('fsm1enexty#22')            #20
-
-label('ldfac#18a')
-ld([fsmState])                  #13,21
-st([sysArgs+6])                 #14 page crossings
-ld('ldfac#3b')                  #15 to slow copy
-st([fsmState])                  #16
-ld([vT3+1])                     #17
-adda(4)                         #18
-st([vT3])                       #19
-bra('NEXT')                     #20
-ld(-22/2)                       #21
+st([Y,X])                       #16
+ld(hi('fsm1bnexty#20'),Y)       #17 sigh!
+jmp(Y,'fsm1bnexty#20')          #18
 
 label('ldfac#3c')
-ld(hi('ldfac#6c'),Y)            #3 validate
+ld(hi('ldfac#6c'),Y)            #3,19 validate
 jmp(Y,'ldfac#6c')               #4
+
+label('ldfac#16a')
+st([sysArgs+6])                 #16 page crossings
+ld('ldfac#3b')                  #17 to slow copy
+st([fsmState])                  #18
+ld([vT3+1])                     #19
+adda(4)                         #20
+st([vT3])                       #21
+bra('NEXT')                     #22
+ld(-24/2)                       #23
 
 label('ldfac#3b')
 ld(hi('ldfac#10b'),Y)           #3,5
@@ -10128,16 +10126,16 @@ ld([vAC],X)                     #3
 ld([vAC+1],Y)                   #4
 ld(sysArgs+0)                   #5
 st([vT3+1])                     #6
-ld('ldfarg#3c')                 #7
-st([fsmState])                  #8
-ld([Y,X])                       #9
-beq('ldfac#12a')                #10
-st([vT2])                       #11
-st([Y,Xpp])                     #12
-ld([vAC])                       #13
-anda(0xfc)                      #14
-xora(0xfc)                      #15
-beq('ldfac#18a')                #16
+ld([Y,X])                       #7
+beq('ldfac#10a')                #8
+st([vT2])                       #9
+st([Y,Xpp])                     #10
+ld([vAC])                       #11
+anda(0xfc)                      #12
+xora(0xfc)                      #13
+beq('ldfac#16a')                #14
+ld('ldfarg#3c')                 #15
+st([fsmState])                  #16
 ld([Y,X])                       #17
 st([Y,Xpp])                     #18
 st([sysArgs+4])                 #19
