@@ -64,7 +64,7 @@ opcodes = [
     0xf8: ('ANDW',  1), 0xfa: ('ORW',   1), 0xfc: ('XORW',  1),
     0xff: ('RET',   0),
     # DEV7 opcodes
-
+    0x18: ('NEGV',  1),
     0x39: ('POKEA', 1),  0x3b: ('DOKEA', 1),  0x3d: ('DEEKA', 1),
     0x3f: ('JEQ',  'J'), 0x41: ('DEEKV', 1),  0x44: ('DOKEQ', 1),
     0x46: ('POKEQ', 1),  0x48: ('MOVQB','M'), 0x4a: ('MOVQW','M'),
@@ -152,7 +152,7 @@ opcodes35 = {
   0x18: ('LSRXA', 0),  0x1a: ('RORX',  0),  0x1c: ('MACX',  0),
   0x1e: ('LDLAC', 0),  0x20: ('STLAC', 0),  0x23: ('INCVL', 1),
   0x25: ('STFAC', 0),  0x27: ('LDFAC', 0),  0x29: ('LDFARG',0),
-  0x37: ('NEGV',  1),  0x38: ('RDIVS', 1),  0x3b: ('RDIVU', 1),
+  0x38: ('RDIVS', 1),  0x3b: ('RDIVU', 1),
   0x3d: ('MULW',  1),  0x3f: ('BEQ',   1),  0x4d: ('BGT',   1),
   0x50: ('BLT',   1),  0x53: ('BGE',   1),  0x56: ('BLE',   1),
   0x5c: ('RESET', 0),  0x62: ('DOKEI','I'), 0x72: ('BNE',   1),
