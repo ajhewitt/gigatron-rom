@@ -48,6 +48,7 @@ call.
 | Opcodes | Notes
 | ------- | ------
 | `BEQ` `BNE` etc. | Now 26 cycles instead of 28
+| `LD`             | Now 20 cycles instead of 22 (v5a: 22, v4: 18)
 | `CALL`           | Now 30 cycles instead of 26 (but `CALLI` is unchanged)
 | `PUSH`           | Now 28 cycles instead of 26 (38 cycles when crossing a page)
 | `POP`            | Now 30 cycles instead of 26 (40 cycles when crossing a page)

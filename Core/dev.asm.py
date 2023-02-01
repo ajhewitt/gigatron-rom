@@ -2144,15 +2144,13 @@ label('NEGV_v7')
 ld(hi('negv#13'),Y)             #10
 jmp(Y,'negv#13')                #11+overlap
 
-# Instruction LD: Load byte from zero page (vAC=[D]), 22 cycles
+# Instruction LD: Load byte from zero page (vAC=[D]), 20 cycles
 label('LD')
-ld(hi('ld#13'),Y)               #10,12
-jmp(Y,'ld#13')                  #11+overlap
-
-# Instruction slot (1c ..)
-nop()                           #10,12
-nop()                           #11
-nop()                           #12
+ld(AC,X)                        #10
+ld([X])                         #11
+ld(0,X)                         #12
+bra('ldw#15')                   #13
+nop()                           #14
 
 # Instruction CMPHS: Adjust high byte for signed compare (vACH=XXX), 28 cycles
 label('CMPHS_v5')
@@ -2166,8 +2164,9 @@ ld(AC,X)                        #10,12
 adda(1)                         #11
 st([vTmp])                      #12 Address of high byte
 ld([X])                         #13
-st([vAC])                       #14
-ld([vTmp],X)                    #15
+ld([vTmp],X)                    #14
+label('ldw#15')
+st([vAC])                       #15
 ld([X])                         #16
 label('ldw#17')
 st([vAC+1])                     #17
