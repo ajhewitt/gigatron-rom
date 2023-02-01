@@ -2132,21 +2132,25 @@ assert vCPU_overhead ==          9
 label('LDWI')
 st([vAC])                       #10
 st([Y,Xpp])                     #11 Just X++
-ld([Y,X])                       #12 Fetch second operand
-st([vAC+1])                     #13
-ld([vPC])                       #14 Advance vPC one more
-adda(1)                         #15
-st([vPC])                       #16
-bra('NEXTY')                    #18
-ld(-20/2)                       #18
+ld([vPC])                       #12 Advance vPC one more
+adda(1)                         #13
+st([vPC])                       #14
+bra('ldw#17')                   #15
+ld([Y,X])                       #16 Fetch second operand
+
+# Instruction NEGV (18 vv) [26 cycles]
+# * Negates word [vv]:=-[vv]
+label('NEGV_v7')
+ld(hi('negv#13'),Y)             #10
+jmp(Y,'negv#13')                #11+overlap
 
 # Instruction LD: Load byte from zero page (vAC=[D]), 22 cycles
 label('LD')
-ld(hi('ld#13'),Y)               #10
+ld(hi('ld#13'),Y)               #10,12
 jmp(Y,'ld#13')                  #11+overlap
 
 # Instruction slot (1c ..)
-nop()                           #10
+nop()                           #10,12
 nop()                           #11
 nop()                           #12
 
@@ -2165,6 +2169,7 @@ ld([X])                         #13
 st([vAC])                       #14
 ld([vTmp],X)                    #15
 ld([X])                         #16
+label('ldw#17')
 st([vAC+1])                     #17
 bra('NEXT')                     #18
 ld(-20/2)                       #19
@@ -6797,23 +6802,24 @@ ld(hi('rdivs#6c'),Y)            #3
 jmp(Y,'rdivs#6c')               #4
 
 # NEGV implementation
-label('negv#3a')
-ld([sysArgs+6],X)               #3
-ld(0,Y)                         #4
-ld(0)                           #5
-suba([Y,X])                     #6
-st([Y,Xpp])                     #7
-beq(pc()+3)                     #8
-bra(pc()+3)                     #9
-ld(0xff)                        #10
-ld(0)                           #10!
-suba([Y,X])                     #11
-st([Y,X])                       #12
-ld(hi('ENTER'))                 #13
-st([vCpuSelect])                #14
-adda(1,Y)                       #15
-jmp(Y,'NEXTY')                  #16
-ld(-20//2)                      #17
+label('negv#13')
+ld(0,Y)                         #13
+ld(AC,X)                        #14
+ld(0)                           #15
+suba([Y,X])                     #16
+beq('negv#19')                  #17
+st([Y,Xpp])                     #18
+ld([Y,X])                       #19
+xora(0xff)                      #20
+label('negv#21')
+st([Y,X])                       #21
+ld(hi('NEXTY'),Y)               #22
+jmp(Y,'NEXTY')                  #23
+ld(-26/2)                       #24
+label('negv#19')
+bra('negv#21')                  #19
+suba([Y,X])                     #20
+
 
 #-----------------------------------------------------------------------
 #
@@ -7655,14 +7661,7 @@ jmp(Y,'NEXT')                   #20
 ld(-22/2)                       #21
 
 # Stretch
-fillers(until=0x37)
-
-# Instruction NEGV (35 37 vv) [28+26 cycles]
-# * Negates word [vv]:=-[vv]
-# * Trashes sysArgs[7]
-oplabel('NEGV_v7')
-bra('fsm14op1#16')              #14
-ld('negv#3a')                   #15
+fillers(until=0x39)
 
 # Instruction RDIVS (35 39 xx) [~1250 cycles total]
 # - Signed division of [xx] by vAC
@@ -9226,8 +9225,6 @@ st([vCpuSelect])                #19
 adda(1,Y)                       #20
 jmp(Y,'NEXTY')                  #21
 ld(-24/2)                       #22
-
-
 
 
 #-----------------------------------------------------------------------

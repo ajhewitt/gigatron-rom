@@ -184,14 +184,7 @@ without changing the contents of the accumulator `vAC`.
 | SUBV   | `68 VV`      | 30 | Subtract `vAC` contents from word `[VV..VV+1]`
 | ADDIV  | `35 7d II VV` | 38 to 40 | Add immediate `II` to word `[VV..VV+1]`
 | SUBIV  | `35 9c II VV` | 38 to 40 | Subtract immediate `II` from word `[VV..VV+1]`
-| NEGV   | `35 37 VV` | 28+26 | Negates word `[VV..VV+1]` (trashes `sysArgs7`)
-
-Because of space considerations in the prefix 35 page, the `NEGV`
-instruction relies on the FSM mechanism
-(https://forum.gigatron.io/viewtopic.php?t=403) which allows for
-splitting long instructions into small easy-to-schedule chunks.
-This is why `NEGV` is split into two chunks of
-respectively 28 and 26 cycles.
+| NEGV   | `18 VV`  | 26 | Negates word `[VV..VV+1]`
 
 **History:**
 Many of these instructions were discusssed in
