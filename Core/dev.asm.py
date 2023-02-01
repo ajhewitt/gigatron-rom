@@ -6800,25 +6800,6 @@ label('rdivs#3c')
 ld(hi('rdivs#6c'),Y)            #3
 jmp(Y,'rdivs#6c')               #4
 
-# NEGV implementation
-label('negv#13')
-ld(0,Y)                         #13
-ld(AC,X)                        #14
-ld(0)                           #15
-suba([Y,X])                     #16
-beq('negv#19')                  #17
-st([Y,Xpp])                     #18
-ld([Y,X])                       #19
-xora(0xff)                      #20
-label('negv#21')
-st([Y,X])                       #21
-ld(hi('NEXTY'),Y)               #22
-jmp(Y,'NEXTY')                  #23
-ld(-26/2)                       #24
-label('negv#19')
-bra('negv#21')                  #19
-suba([Y,X])                     #20
-
 
 #-----------------------------------------------------------------------
 #
@@ -8623,16 +8604,6 @@ ld([vPC+1],Y)                   #16
 bra('jccn#19')                  #17
 nop()                           #18
 
-# LD implementation
-label('ld#13')
-ld(AC,X)                        #13
-ld([X])                         #14
-st([vAC])                       #15
-ld(0)                           #16
-st([vAC+1])                     #17
-ld(hi('NEXTY'),Y)               #18
-jmp(Y,'NEXTY')                  #19
-ld(-22/2)                       #20
 
 
 #-----------------------------------------------------------------------
@@ -10439,6 +10410,25 @@ st([Y,X])                       #22
 ld(hi('REENTER'),Y)             #23
 jmp(Y,'REENTER')                #24
 ld(-28/2)                       #25
+
+# NEGV implementation
+label('negv#13')
+ld(0,Y)                         #13
+ld(AC,X)                        #14
+ld(0)                           #15
+suba([Y,X])                     #16
+beq('negv#19')                  #17
+st([Y,Xpp])                     #18
+ld([Y,X])                       #19
+xora(0xff)                      #20
+label('negv#21')
+st([Y,X])                       #21
+ld(hi('NEXTY'),Y)               #22
+jmp(Y,'NEXTY')                  #23
+ld(-26/2)                       #24
+label('negv#19')
+bra('negv#21')                  #19
+suba([Y,X])                     #20
 
 
 
