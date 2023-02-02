@@ -83,13 +83,23 @@ even.  The stack operations are then modified as follows:
   the slower `LSXW` and `STXW` instructions, or by computing their
   addresses in `vAC` and using the `DOKEA` or `DEEKA` instructions.
 
+* The `PUSH` and `POP` opcodes only cross page boundaries when
+  the stack pointer is even. Instructions `LDLW` and `STLW` only
+  can access words whose two bytes belong to the same page. The 
+  simplest way to ensure this is to keep the stack pointer even
+  and only use even offsets in `LDLW` or `STLW`. If the stack
+  contains long integer variables (4 bytes), it is convenient
+  to go further and align the stack pointer on four bytes 
+  boundaries.
+  
+
 **History:**
 The first stack extension was the addition of a variable
 byte `vSPH` located at address 0x04 in early ROMvX0s
 (https://forum.gigatron.io/viewtopic.php?p=1995#p1995). This provides
 the means to displace the stack into any page, but does not allow the
 stack to exceed 256 byte.  The need for a true 16 bits stack was
-expressed in (https://forum.gigatron.io/viewtopic.php?p=2349#p2349).
+expressed in (https://forum.gigatron.io/viewtopic.php?p=2053#p2053).
 vCPU7 achieves this by displacing the `vTmp` scratch byte elsewhere in
 page zero, freeing space after `vSP` to form a 16 bits word, and by
 modifying the stack opcodes to allow them to cross page boundaries
@@ -141,7 +151,7 @@ a shorter sequence that runs faster.
 | DOKEA  | `3b VV`       | 28  | Store word `[VV..VV+1]` at address `[vAC]..[vAC]+1`
 | DOKEQ  | `44 II`       | 22  | Store immediate `II` at address `[vAC]..[vAC]+1`
 | DOKEI  | `35 62 HH LL` | 30  | Store immediate `HHLL` at address `[vAC]..[vAC]+1`
-| DEEKA  | `3d VV`       | 30  | Load word at address `[vAC]..[vAC]+1` into `[VV..VV+1]` (trashes `sysArgs7`)
+| DEEKA  | `3d VV`       | 30  | Load word at address `[vAC]..[vAC]+1` into `[VV..VV+1]`<br>(trashes `sysArgs7`)
 | DEEKV  | `41 VV`       | 28  | Load word at address `[VV]..[VV]+1` into `vAC`
 | POKEA  | `39 VV`     | 28  | Store byte `[VV]` at address `[vAC]`
 | POKEQ  | `46 II`     | 22  | Store immediate `II` at address `[vAC]`
@@ -273,7 +283,7 @@ For instance `KK=0b01000000` mutiplies by 3, `KK=0b10100000` by 5,
 is composed of a 44 cycles overhead, 14 to 18 cycles per shift, and 24
 cycles per addition or subtraction. It is recommended to use `MULQ`
 for all small multiplication except for the multiplications by 2 and 4
-which are better implemented with `LSRW`.
+which are better implemented with `LSLW`.
 
 **History:**
 A SYS call to perform 16 bits multiplications and divisions was
@@ -321,10 +331,11 @@ longer sequences, as in the following piece of code
 
 **History:**
 The need to copy memory quickly has long been recognized.  Historical
-progress includes the `SYS_CopyMemory` call of DEV6ROM which is fast
-but inconvenient and the `NCOPY` instruction initially written for
-ROMvX0 which is convenient but substantially slower.  The FSM
-framework made it possible to have both.
+progress includes the `SYS_CopyMemory` call of DEV6ROM
+(https://forum.gigatron.io/viewtopic.php?t=302)
+which is fast but inconvenient and the `NCOPY` instruction 
+initially written for ROMvX0 which is convenient but substantially slower.  
+The FSM framework made it possible to have both.
 
 
 ### Long arithmetic
@@ -341,14 +352,14 @@ conditional jump opcodes.
 | ------ | ---------- | ----------- | -------
 | LDLAC  | `35 1e`    | 38          | Load long `[vAC]..[vAC+3]` into long accumulator `vLAC`
 | STLAC  | `35 20`    | 38          | Store `vLAC` into `[vAC]..[vAC+3]` into long accumulator `vLAC`
-| MOVL   | `35 db YY XX` | 30+30    | Copy long from `[XX..XX+3]` to `[YY..YY+3]` (trashes `sysArgs[0123]`)
-| ADDL   | `35 00`    | 22+20+22+30 | Add long `[vAC]..[vAC+3]` to long accumulator `vLAC` (trashes `sysArgs[567]`)
-| SUBL   | `35 04`    | 22+18+20+38 | Subtract long `[vAC]..[vAC+3]` from long accumulator `vLAC` (trashes `sysArgs[567]`)
-| ANDL   | `35 06`    | 22+28       | Bitwise and of `[vAC]..[vAC+3]` with long accumulator `vLAC` (trashes `sysArgs7`)
-| ORL    | `35 08`    | 22+28       | Bitwise or of `[vAC]..[vAC+3]` with long accumulator `vLAC` (trashes `sysArgs7`)
-| XORL   | `35 0a`    | 22+28       | Bitwise xor of `[vAC]..[vAC+3]` with long accumulator `vLAC` (trashes `sysArgs7`)
-| CMPLS  | `35 14`    | max 22+20+24| Signed compare long accumulator `vLAC` with `[vAC]..[vAC+3]` (trashes `sysArgs7`)
-| CMPLU  | `35 16`    | max 22+20+24| Unsigned compare long accumulator `vLAC` with `[vAC]..[vAC+3]` (trashes `sysArgs7`)
+| MOVL   | `35 db YY XX` | 30+30    | Copy long from `[XX..XX+3]` to `[YY..YY+3]`<br>(trashes `sysArgs[0123567]`)
+| ADDL   | `35 00`    | 22+20+22+30 | Add long `[vAC]..[vAC+3]` to long accumulator `vLAC`<br>(trashes `sysArgs[567]`)
+| SUBL   | `35 04`    | 22+18+20+38 | Subtract long `[vAC]..[vAC+3]` from long accumulator `vLAC`<br>(trashes `sysArgs[567]`)
+| ANDL   | `35 06`    | 22+28       | Bitwise and of `[vAC]..[vAC+3]` with long accumulator `vLAC`<br>(trashes `sysArgs7`)
+| ORL    | `35 08`    | 22+28       | Bitwise or of `[vAC]..[vAC+3]` with long accumulator `vLAC`<br>(trashes `sysArgs7`)
+| XORL   | `35 0a`    | 22+28       | Bitwise xor of `[vAC]..[vAC+3]` with long accumulator `vLAC`<br>(trashes `sysArgs7`)
+| CMPLS  | `35 14`    | max 22+20+24| Signed compare long accumulator `vLAC` with `[vAC]..[vAC+3]`<br>(trashes `sysArgs7`)
+| CMPLU  | `35 16`    | max 22+20+24| Unsigned compare long accumulator `vLAC` with `[vAC]..[vAC+3]`<br>(trashes `sysArgs7`)
 
 Three additional instructions operate on long integers in page zero
 without changing the contents of either `vAC` or `vLAC` (unless of
@@ -357,9 +368,9 @@ or `vLAC`.
 
 | Opcode |  Encoding  | Cycles     | Function
 | ------ | ---------- | ---------- | -------
-| INCVL  | `35 23 VV` | max 22+30  | Increment long `[VV..VV+3]` (trashes `sysArgs[67]`)
-| NEGVL  | `35 0c VV` | 28+28      | Negates long `[VV..VV+3]` (trashes `sysArgs[67]`)
-| LSLVL  | `35 10 VV` | 28+24+22   | Left shift long  `[VV..VV+3]` (trashes `sysArgs[67]`)
+| INCVL  | `35 23 VV` | max 22+30  | Increment long `[VV..VV+3]`<br>(trashes `sysArgs[67]`)
+| NEGVL  | `35 0c VV` | 28+28      | Negates long `[VV..VV+3]`<br>(trashes `sysArgs[67]`)
+| LSLVL  | `35 10 VV` | 28+24+22   | Left shift long  `[VV..VV+3]`<br>(trashes `sysArgs[67]`)
 
 **History:**
 These are improvements of the long arithmetic opcodes
@@ -380,9 +391,9 @@ point accumulator composed of registers `vFAS` for the sign,
 
 | Opcode | Encoding      | Cycles     | Function
 | ------ | ----------    | ---------- | -------
-| MOVF   | `35 dd YY XX` | 30+24+22   | Copy fp number from `[XX..XX+4]` to `[YY..YY+4]` (trashes `sysArgs[0..7]`)
-| LDFAC  | `35 27`       | typ 30+22  | Load fp number `[vAC]..[vAC]+4` into float accumulator (trashes `vT3` `sysArgs[567]`)
-| STFAC  | `35 25`       | typ 110    | Store float accumulator into fp number `[vAC]..[vAC]+4` (trashes `vT3` `sysArgs[567]`)
+| MOVF   | `35 dd YY XX` | 30+24+22   | Copy fp number from `[XX..XX+4]` to `[YY..YY+4]`<br>(trashes `sysArgs[0..7]`)
+| LDFAC  | `35 27`       | typ 30+22  | Load fp number `[vAC]..[vAC]+4` into float accumulator<br>(trashes `vT3` `sysArgs[567]`)
+| STFAC  | `35 25`       | typ 110    | Store float accumulator into fp number `[vAC]..[vAC]+4`<br>(trashes `vT3` `sysArgs[567]`)
 
 Three shift instructions operate on the 40 bits extended accumulator `vLAX`.
 
