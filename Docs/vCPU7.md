@@ -330,8 +330,8 @@ longer sequences, as in the following piece of code
 ```
 
 **History:**
-The need to copy memory quickly has long been recognized.  Historical
-progress includes the `SYS_CopyMemory` call of DEV6ROM
+The need to copy memory quickly has long been recognized.
+Historical progress includes the `SYS_CopyMemory` call of DEV6ROM
 (https://forum.gigatron.io/viewtopic.php?t=302)
 which is fast but inconvenient and the `NCOPY` instruction 
 initially written for ROMvX0 which is convenient but substantially slower.  
@@ -374,7 +374,7 @@ or `vLAC`.
 
 **History:**
 These are improvements of the long arithmetic opcodes
-implemented for ROMvX0 one or two years ago. Thanks to the FSM framework,
+implemented for ROMvX0 ia while ago. Thanks to the FSM framework,
 they are implemented as easy-to-schedule chunks and avoid the hidden
 but severe overhead of long monolithic instructions.
 

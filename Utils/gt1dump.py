@@ -157,7 +157,7 @@ opcodes35 = {
   0x50: ('BLT',   1),  0x53: ('BGE',   1),  0x56: ('BLE',   1),
   0x5c: ('RESET', 0),  0x62: ('DOKEI','I'), 0x72: ('BNE',   1),
   0x7d: ('ADDIV','T'), 0x9c: ('SUBIV','T'), 0xcb: ('COPY',  0),
-  0xdb: ('MOVL', 'M'), 0xdd: ('MOVF', 'M'),
+  0xcf: ('COPYN', 1),  0xdb: ('MOVL', 'M'), 0xdd: ('MOVF', 'M'),
 }
 
 def insSys(asm):
