@@ -7920,7 +7920,7 @@ oplabel('MOVL_v7')
 bra('fsm18op2#16')              #14
 ld('movl#3a')                   #15
 
-# Instruction MOVF (35 dd yy xx), 30+24+22 cycles
+# Instruction MOVF (35 dd yy xx), 30+38 cycles
 # * Move five bytes float from [xx] to [yy]
 # * No page crossings, trashes sysArgs,T0,T1, but MOVF(xx,sysArgs0) works
 # * Origin: https://forum.gigatron.io/viewtopic.php?p=2322#p2322
@@ -8020,46 +8020,43 @@ ld(-30/2)                       #28
 
 # MOVF implementation
 label('movf#3a')
-ld(0,Y)                         #3
-ld([sysArgs+6],X)               #4
-ld([Y,X])                       #5
-st([Y,Xpp])                     #6
-st([sysArgs+0])                 #7
-ld([Y,X])                       #8
-st([Y,Xpp])                     #9
-st([sysArgs+1])                 #10
-ld([Y,X])                       #11
-st([Y,Xpp])                     #12
-st([sysArgs+2])                 #13
-ld([Y,X])                       #14
-st([Y,Xpp])                     #15
-st([sysArgs+3])                 #16
-ld([Y,X])                       #17
-st([sysArgs+4])                 #18
-nop()                           #19
-ld('movf#3b')                   #20
-st([fsmState])                  #21
-bra('NEXT')                     #22
-ld(-24/2)                       #23
-
-label('movf#3b')
-ld(0,Y)                         #3
-ld([sysArgs+5],X)               #4
-ld([sysArgs+0])                 #5
-st([Y,Xpp])                     #6
-ld([sysArgs+1])                 #7
+adda(min(0,maxTicks-38/2))      #3
+blt('movf#6a')                  #4
+ld(0,Y)                         #5
+ld([sysArgs+6],X)               #6
+ld([Y,X])                       #7
 st([Y,Xpp])                     #8
-ld([sysArgs+2])                 #9
-st([Y,Xpp])                     #10
-ld([sysArgs+3])                 #11
-st([Y,Xpp])                     #12
-ld([sysArgs+4])                 #13
+st([sysArgs+0])                 #9
+ld([Y,X])                       #10
+st([Y,Xpp])                     #11
+st([sysArgs+1])                 #12
+ld([Y,X])                       #13
 st([Y,Xpp])                     #14
-ld(hi('ENTER'))                 #15
-st([vCpuSelect])                #16
-ld(hi('REENTER'),Y)             #17
-jmp(Y,'REENTER')                #18
-ld(-22/2)                       #19
+st([sysArgs+2])                 #15
+ld([Y,X])                       #16
+st([Y,Xpp])                     #17
+st([sysArgs+3])                 #18
+ld([Y,X])                       #19
+st([sysArgs+4])                 #20
+ld([sysArgs+5],X)               #21
+ld([sysArgs+0])                 #22
+st([Y,Xpp])                     #23
+ld([sysArgs+1])                 #24
+st([Y,Xpp])                     #25
+ld([sysArgs+2])                 #26
+st([Y,Xpp])                     #27
+ld([sysArgs+3])                 #28
+st([Y,Xpp])                     #29
+ld([sysArgs+4])                 #30
+st([Y,Xpp])                     #31
+ld(hi('ENTER'))                 #32
+st([vCpuSelect])                #33
+ld(hi('NEXTY'),Y)               #34
+jmp(Y,'NEXTY')                  #35
+ld(-38/2)                       #36
+label('movf#6a')
+bra('NEXT')                     #6
+ld(-8/2)                        #7
 
 # COPY implementation
 label('copy#18')

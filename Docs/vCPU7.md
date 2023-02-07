@@ -391,7 +391,7 @@ point accumulator composed of registers `vFAS` for the sign,
 
 | Opcode | Encoding      | Cycles     | Function
 | ------ | ----------    | ---------- | -------
-| MOVF   | `35 dd YY XX` | 30+24+22   | Copy fp number from `[XX..XX+4]` to `[YY..YY+4]`<br>(trashes `sysArgs[0..7]`)
+| MOVF   | `35 dd YY XX` | 30+38      | Copy fp number from `[XX..XX+4]` to `[YY..YY+4]`<br>(trashes `sysArgs[0..7]`)
 | LDFAC  | `35 27`       | typ 30+22  | Load fp number `[vAC]..[vAC]+4` into float accumulator<br>(trashes `vT3` `sysArgs[567]`)
 | STFAC  | `35 25`       | typ 110    | Store float accumulator into fp number `[vAC]..[vAC]+4`<br>(trashes `vT3` `sysArgs[567]`)
 
