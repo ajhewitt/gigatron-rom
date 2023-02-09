@@ -8083,181 +8083,156 @@ st([vCpuSelect])                #27
 bra('NEXT')                     #28
 ld(-30/2)                       #29
 
+
+# COPY FSM
 label('copy#3a')
-ld([vT3])                       #3
-adda(1,X)                       #4
-anda(0xfc)                      #5
-xora(0xfc)                      #6
-beq('copy#9a')                  #7  -> slow w/crossings
-ld([vT2])                       #8
-anda(0xfc)                      #9
-xora(0xfc)                      #10
-beq('copy#13a')                 #11 -> slow w/crossings
-ld([vT3+1],Y)                   #12
-ld([sysArgs+6])                 #13
-anda(0xfc)                      #14
-beq('copy#17a')                 #15
-ld([Y,X])                       #16 burst 4
+ld([sysArgs+6])                 #3 State #a: entry point
+anda(0xfc)                      #4
+beq('copy#7a')                  #5 -> few bytes left
+ld([vT3+1],Y)                   #6
+ld([vT3],X)                     #7 try burst
+ld([vT3])                       #8
+adda(4)                         #9
+st([vT3])                       #10
+anda(0xfc)                      #11
+beq('copy#14a')                 #12 -> page crossings
+ld([Y,X])                       #13
+st([Y,Xpp])                     #14
+st([sysArgs+0])                 #15 read four
+ld([Y,X])                       #16
 st([Y,Xpp])                     #17
-st([sysArgs+1])                 #18 read offsets 1,2,3
+st([sysArgs+1])                 #18
 ld([Y,X])                       #19
 st([Y,Xpp])                     #20
 st([sysArgs+2])                 #21
 ld([Y,X])                       #22
 st([sysArgs+3])                 #23
-ld('copy#3b')                   #24 burst 4 cont
+ld('copy#3d')                   #24 ->#d : store four
 st([fsmState])                  #25
 bra('NEXT')                     #26
 ld(-28/2)                       #27
-
-label('copy#3b')
-ld([vT3],X)                     #3 burst 4 cont
-ld([vT3+1],Y)                   #4
-ld([Y,X])                       #5 read offset 0
-ld([vT2],X)                     #6
-ld([vT2+1],Y)                   #7
-st([Y,Xpp])                     #8 write offsets 0,1,2,3
-ld([sysArgs+1])                 #9
-st([Y,Xpp])                     #10
-ld([sysArgs+2])                 #11
-st([Y,Xpp])                     #12
-ld([sysArgs+3])                 #13
-st([Y,Xpp])                     #14
-ld([vT3])                       #15 inc vT3
-adda(4)                         #16
-st([vT3])                       #17
-ld([vT2])                       #18 inc vT2
-adda(4)                         #19
-st([vT2])                       #20
-ld([sysArgs+6])                 #21 dec N
-suba(4)                         #22
-bne('copy#25b')                 #23
-ld(hi('NEXTY'),Y)               #24 exit
-ld(hi('ENTER'))                 #25
-st([vCpuSelect])                #26
-jmp(Y,'NEXTY')                  #27
-ld(-30/2)                       #28
-label('copy#25b')
-st([sysArgs+6])                 #25 loop
-ld('copy#3a')                   #26
-st([fsmState])                  #27
-bra('NEXT')                     #28
-ld(-30/2)                       #29
-
-label('copy#9a')
-bra(pc()+1)                     #9
-nop()                           #10,11
-ld([vT3+1],Y)                   #12
-label('copy#13a')
-ld([vT3],X)                     #13 slow w/crossings
-ld([Y,X])                       #14 copy 1
-ld([vT2+1],Y)                   #15
-ld([vT2],X)                     #16
-st([Y,X])                       #17
-ld('copy#3c')                   #18
+label('copy#14a')
+ld([vT3])                       #14 undo vt3
+suba(4)                         #15
+st([vT3])                       #16
+nop()                           #17
+ld('copy#3b')                   #18 ->#b : copy1by1
 st([fsmState])                  #19
 bra('NEXT')                     #20
 ld(-22/2)                       #21
 
-label('copy#3c')
-ld([vT3])                       #3 inc vT3
-adda(1)                         #4
-st([vT3])                       #5
-beq(pc()+3)                     #6
-bra(pc()+3)                     #7
-ld(0)                           #8
-ld(1)                           #8!
-adda([vT3+1])                   #9
-st([vT3+1])                     #10
-ld([vT2])                       #11 inc vT2
-adda(1)                         #12
-st([vT2])                       #13
-beq(pc()+3)                     #14
-bra(pc()+3)                     #15
-ld(0)                           #16
-ld(1)                           #16!
-adda([vT2+1])                   #17
-st([vT2+1])                     #18
-ld([sysArgs+6])                 #19 dec N
-suba(1)                         #20
-bne('copy#23c')                 #21
-ld(hi('NEXTY'),Y)               #22 exit
-ld(hi('ENTER'))                 #23
-st([vCpuSelect])                #24
-jmp(Y,'NEXTY')                  #25
-ld(-28/2)                       #26
-label('copy#23c')
+label('copy#3b')
+bra(pc()+1)                     #3 delay to sync with #a
+nop()                           #4,5
+ld([vT3+1],Y)                   #6
+label('copy#7a')
+ld([vT3],X)                     #7 copy one
+ld([Y,X])                       #8 - used by both #a and #b
+ld([vT2],X)                     #9 - loop until either sysArgs==0
+ld([vT2+1],Y)                   #10  or a page is crossed.
+st([Y,X])                       #11
+ld([vT3])                       #12
+adda(1)                         #13
+st([vT3])                       #14
+beq('copy#17b')                 #15
+ld([vT2])                       #16
+adda(1)                         #17
+beq('copy#20b')                 #18
+st([vT2])                       #19
+ld([sysArgs+6])                 #20
+suba(1)                         #21
+beq('copy#24b')                 #22 ->exit
 st([sysArgs+6])                 #23
-ld('copy#3a')                   #24
-st([fsmState])                  #25
-bra('NEXT')                     #26
-ld(-28/2)                       #27
-
-label('copy#17a')
-ld([sysArgs+6])                 #17
-suba(1)                         #18
-beq(pc()+3)                     #19
-bra(pc()+3)                     #20
-ld('copy#3d')                   #21 -> copy2+
-ld('copy#3e')                   #21 -> copy1final
-st([fsmState])                  #22
-nop()                           #23
 bra('NEXT')                     #24
-ld(-26/2)                       #25
-
-label('copy#3d')
-ld([vT3+1],Y)                   #3 copy2+
-ld([vT3])                       #4
-adda(1,X)                       #5
-ld([Y,X])                       #6
-st([vTmp])                      #7
-ld([vT3],X)                     #8
-ld([Y,X])                       #9
-ld([vT2],X)                     #10
-ld([vT2+1],Y)                   #11
-st([Y,Xpp])                     #12
-ld([vTmp])                      #13
-st([Y,X])                       #14
-ld([vT3])                       #15
-adda(2)                         #16
-st([vT3])                       #17
-ld([vT2])                       #18
-adda(2)                         #19
-st([vT2])                       #20
-ld([sysArgs+6])                 #21
-suba(2)                         #22
-bne('copy#25d')                 #23
-ld(hi('NEXTY'),Y)               #24 exit
-ld(hi('ENTER'))                 #25
-st([vCpuSelect])                #26
+ld(-26/2)                       #25 loop to #a or #b
+label('copy#24b')
+ld(hi('ENTER'))                 #24 exit
+st([vCpuSelect])                #25
+adda(1,Y)                       #26
 jmp(Y,'NEXTY')                  #27
 ld(-30/2)                       #28
-label('copy#25d')
-st([sysArgs+6])                 #25
-ld('copy#3a')                   #26
-st([fsmState])                  #27
-bra('NEXT')                     #28
-ld(-30/2)                       #29
+label('copy#17b')
+adda(1)                         #17 carry on vT3
+st([vT2])                       #18
+nop()                           #19
+label('copy#20b')
+ld('copy#3c')                   #20 carry on vT2
+st([fsmState])                  #21
+bra('NEXT')                     #22 -> #d : resolve carries
+ld(-24/2)                       #23
 
-label('copy#3e')
-ld([vT3],X)                     #3 copy1final
-ld([vT3+1],Y)                   #4
-ld([Y,X])                       #5
-ld([vT2],X)                     #6
-ld([vT2+1],Y)                   #7
-st([Y,X])                       #8
-ld([vT3])                       #9
-adda(1)                         #10
-st([vT3])                       #11
-ld([vT2])                       #12
-adda(1)                         #13
-st([vT2])                       #14
-ld(hi('ENTER'))                 #15 exit
-st([vCpuSelect])                #16
-adda(1,Y)                       #17
-jmp(Y,'REENTER')                #18
-ld(-22/2)                       #19
+label('copy#3c')
+ld([vT3])                       #3 resolve T2/T3 carries
+beq(pc()+3)                     #4 return to state #a or exit
+bra(pc()+3)                     #5
+ld(0)                           #6
+ld(1)                           #6!
+adda([vT3+1])                   #7
+st([vT3+1])                     #8
+ld([vT2])                       #9
+beq(pc()+3)                     #10
+bra(pc()+3)                     #11
+ld(0)                           #12
+ld(1)                           #12!
+adda([vT2+1])                   #13
+st([vT2+1])                     #14
+ld([sysArgs+6])                 #15
+suba(1)                         #16
+beq('copy#19c')                 #17
+st([sysArgs+6])                 #18
+nop()                           #19
+ld('copy#3a')                   #20
+st([fsmState])                  #21
+bra('NEXT')                     #22
+ld(-24/2)                       #23
+label('copy#19c')
+ld(hi('ENTER'))                 #19
+st([vCpuSelect])                #20
+adda(1,Y)                       #21
+jmp(Y,'REENTER')                #22
+ld(-26/2)                       #23
 
+label('copy#3d')
+ld([vT2],X)                     #3
+ld([vT2])                       #4
+adda(4)                         #5
+st([vT2])                       #6
+anda(0xfc)                      #7
+beq('copy#10d')                 #8 -> page crossings
+ld([vT2+1],Y)                   #9
+ld([sysArgs+0])                 #10
+st([Y,Xpp])                     #11
+ld([sysArgs+1])                 #12
+st([Y,Xpp])                     #13
+ld([sysArgs+2])                 #14
+st([Y,Xpp])                     #15
+ld([sysArgs+3])                 #16
+st([Y,Xpp])                     #17
+ld([sysArgs+6])                 #18
+suba(4)                         #19
+beq('copy#22d')                 #20
+st([sysArgs+6])                 #21
+ld('copy#3a')                   #22
+st([fsmState])                  #23
+bra('NEXT')                     #24
+ld(-26/2)                       #25
+label('copy#22d')
+ld(hi('ENTER'))                 #22
+st([vCpuSelect])                #23
+adda(1,Y)                       #24
+jmp(Y,'NEXTY')                  #25
+ld(-28/2)                       #26
+label('copy#10d')
+ld([vT2])                       #10
+suba(4)                         #11
+st([vT2])                       #12
+ld([vT3])                       #13
+suba(4)                         #14
+st([vT3])                       #15
+ld('copy#3b')                   #16 ->#b : copy1by1
+st([fsmState])                  #17
+bra('NEXT')                     #18
+ld(-20/2)                       #19
 
 #-----------------------------------------------------------------------
 #
