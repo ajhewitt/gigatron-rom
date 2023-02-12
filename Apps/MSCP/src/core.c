@@ -26,11 +26,16 @@ void set_computing_mode(int enabled)
 #endif
 }
 
+/* The following functions operate with bank3 selected.
+   Since the stack grows down from 0xfffc, it is important
+   to make sure that these functions do not touch the 
+   stack while bank3 is selected. */
+
 void clr_ttable(void)
 {
   register byte cb = ctrlBits_v5;
   SYS_ExpanderControl(cb | 0xc0);
-  memset((void*)TTPTR, 0, CORE * sizeof(struct tt));
+  memset((void*)TTPTR, 0, CORE * sizeof(struct tt)); /* memset does not PUSH */
   SYS_ExpanderControl(cb);
 }
 
@@ -66,8 +71,9 @@ struct bk *get_book(int x)
 
 void preload_book(const char *filename)
 {
-#ifdef BOOKSIZE
   register byte cb = ctrlBits_v5;
+#ifdef BOOKSIZE
+  /* Load book from ROM */
   register void *p = 0;
   char buf[9];
   do {
@@ -80,14 +86,19 @@ void preload_book(const char *filename)
     SYS_ExpanderControl(cb);
     prebooksize = BOOKSIZE / sizeof(struct bk);
   }
-#else
-  /* Still no way to load book from SD */
 #endif
 }
 
 void load_book(const char *filename)
 {
   if (prebooksize) 
-    booksize = prebooksize;
+    booksize = prebooksize / sizeof(struct bk);
   printf("Opening book size: %d\n", booksize);
 }
+
+
+/* Local Variables: */
+/* mode: c */
+/* c-basic-offset: 2 */
+/* indent-tabs-mode: () */
+/* End: */

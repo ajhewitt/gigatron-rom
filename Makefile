@@ -41,7 +41,6 @@ dev512k7.rom: Core/* Apps/*/* Makefile interface.json
 		Racer=Apps/Racer/Racer_v3.gcl\
 		TinyBASIC=Apps/TinyBASIC/TinyBASIC_v6.gcl\
 		MSCP=Apps/MSCP/mscp.gt1\
-		MSCPbook=Apps/MSCP/book.gt1\
 		Loader=Apps/Loader/Loader.gcl\
 		WozMon=Apps/WozMon/WozMon.gcl\
 		Credits=Apps/Credits/Credits.gt1\
@@ -60,7 +59,6 @@ dev128k7.rom: Core/* Apps/*/* Makefile interface.json
 		Racer=Apps/Racer/Racer_v3.gcl\
 		TinyBASIC=Apps/TinyBASIC/TinyBASIC_v6.gcl\
 		MSCP=Apps/MSCP/mscp.gt1\
-		MSCPbook=Apps/MSCP/book.gt1\
 		Loader=Apps/Loader/Loader.gcl\
 		WozMon=Apps/WozMon/WozMon.gcl\
 		Credits=Apps/Credits/Credits.gt1\

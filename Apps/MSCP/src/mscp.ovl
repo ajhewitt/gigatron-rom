@@ -15,6 +15,9 @@ def map_place(filename, fragments):
     #    print(f"-- {filename} {fragments} {directives}")
     return directives
 
+# Define an onload function
+args.onload.insert(0,'mscp_onload')
+
 # Local Variables:
 # mode: python
 # indent-tabs-mode: ()

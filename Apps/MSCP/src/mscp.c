@@ -146,7 +146,12 @@ struct move {
 static struct move move_stack[1024];    /* History of moves */
 static struct move * near move_sp;
 
+#ifdef __gigatron__
+static int piece_square_m[12][64];      /* Position evaluation tables */
+static int *piece_square[12];           /* Pointers saves a multiplication by 128 */
+#else
 static int piece_square[12][64];        /* Position evaluation tables */
+#endif
 static uint32_t zobrist[12][64];        /* Hash-key construction */
 
 /*
@@ -209,12 +214,13 @@ enum { RANK_1, RANK_2, RANK_3, RANK_4, RANK_5, RANK_6, RANK_7, RANK_8 };
 #define CHAR2FILE(c)            ((c)-'a')               /* text to file */
 #define PIECE2CHAR(p)           ("-KQRBNPkqrbnp"[p])    /* piece to text */
 
-#define F(square)               ((square) >> 3)         /* file */
+#define U(x)                    ((unsigned)(x))
+#define F(square)               (U(square) >> 3)        /* file */
 #define R(square)               ((square) & 7)          /* rank */
 #define SQ(f,r)                 (((f) << 3) | (r))      /* compose square */
 #define FLIP(square)            ((square)^7)            /* flip board */
 #define MOVE(fr,to)             (((fr) << 6) | (to))    /* compose move */
-#define FR(move)                (((move) & 07700) >> 6) /* from square */
+#define FR(move)                (U((move)&07700) >> 6)  /* from square */
 #define TO(move)                ((move) & 00077)        /* target square */
 #define SPECIAL                 (1<<12)                 /* for special moves */
 
@@ -504,7 +510,7 @@ static void atk_slide(int sq, byte bdirs, struct side *s)
 
         dirs &= king_dirs[sq];
         do {
-                dir = (dir - dirs) & dirs;
+                dir = (/*dir*/ - dirs) & dirs;
                 to = sq;
                 do {
                         to += king_step[dir];
@@ -597,22 +603,24 @@ static void compute_attacks(void)
                         break;
 
                 case WHITE_PAWN:
-                        whitepawns[1+F(sq)] += 1;
-                        if (F(sq) != FILE_H) {
-                                whiteattack[sq + DIR_N + DIR_E] += 1;
+                        to = F(sq);
+                        whitepawns[1+to] += 1;
+                        if (to != FILE_H) {
+                                whiteattack[sq + (DIR_N + DIR_E)] += 1;
                         }
-                        if (F(sq) != FILE_A) {
-                                whiteattack[sq + DIR_N - DIR_E] += 1;
+                        if (to != FILE_A) {
+                                whiteattack[sq + (DIR_N - DIR_E)] += 1;
                         }
                         break;
 
                 case BLACK_PAWN:
-                        blackpawns[1+F(sq)] += 1;
-                        if (F(sq) != FILE_H) {
-                                blackattack[sq - DIR_N + DIR_E] += 1;
+                        to = F(sq);
+                        blackpawns[1+to] += 1;
+                        if (to != FILE_H) {
+                                blackattack[sq + (- DIR_N + DIR_E)] += 1;
                         }
-                        if (F(sq) != FILE_A) {
-                                blackattack[sq - DIR_N - DIR_E] += 1;
+                        if (to != FILE_A) {
+                                blackattack[sq + (- DIR_N - DIR_E)] += 1;
                         }
                         break;
                 }
@@ -2135,6 +2143,8 @@ int main(void)
 
 #ifdef __gigatron
         preload_book("book.bin");
+        for (i=0; i<12; i++)
+                piece_square[i] = piece_square_m[i];
 #endif
 
         puts(startup_message);
