@@ -46,7 +46,7 @@ dev512k7.rom: Core/* Apps/*/* Makefile interface.json
 		WozMon=Apps/WozMon/WozMon.gcl\
 		Credits=Apps/Credits/Credits.gt1\
 		Egg=Apps/Horizon/Horizon_c.gt1\
-		Boot=Apps/CardBoot/CardBoot_v2.gt1\
+		Boot=Apps/CardBoot/CardBoot.gt1\
 		Main=Apps/MainMenu/MainMenu.gcl\
 		Reset=Core/Reset.gcl
 
@@ -65,7 +65,7 @@ dev128k7.rom: Core/* Apps/*/* Makefile interface.json
 		WozMon=Apps/WozMon/WozMon.gcl\
 		Credits=Apps/Credits/Credits.gt1\
 		Egg=Apps/Horizon/Horizon_c.gt1\
-		Boot=Apps/CardBoot/CardBoot_v2.gt1\
+		Boot=Apps/CardBoot/CardBoot.gt1\
 		Main=Apps/MainMenu/MainMenu.gcl\
 		Reset=Core/Reset.gcl
 
@@ -89,7 +89,7 @@ dev7.rom: Core/* Apps/*/* Makefile interface.json
 		MSBASIC=Apps/MSBASIC/MSBASIC_v1.gt1\
 		Credits=Apps/Credits/Credits_v4.gt1\
 		Egg=Apps/Horizon/Horizon_c.gt1\
-		Boot=Apps/CardBoot/CardBoot_v2.gt1\
+		Boot=Apps/CardBoot/CardBoot.gt1\
 		Main=Apps/MainMenu/MainMenu_v6.gcl\
 		Reset=Core/Reset.gcl
 
