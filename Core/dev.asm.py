@@ -771,7 +771,7 @@ ld([vTmp])                      #37 Always load after ctrl
 if WITH_128K_BOARD:
   ld(0x7c)                      #38
   st([ctrlVideo])               #39
-  st([ctrlCopy])            #40
+  st([ctrlCopy])                #40
   ld(-32/2)                     #41-32=9
 else:
   nop()                         #38 adjust vticks
@@ -1296,14 +1296,15 @@ if soundDiscontinuity > 2:
 if WITH_128K_BOARD:
   # The cpu bank is enabled during vblank.
   # Rebuild ctrlBits{Video,Copy} since Y=1
-  # at the cost of 4 extra cycles.
+  # at the cost of 7 extra cycles.
   ld([Y,ctrlBits])              #+1
-  st([ctrlCopy],X)          #+2
-  anda(0x3c)                    #+3
-  ora(0x40)                     #+4
-  st([ctrlVideo])               #+5
-  ctrl(X)                       #+6 next must be a load
-  extra += 6
+  st([ctrlCopy],X)              #+2
+  xora([ctrlVideo])             #+3
+  anda(0x3c)                    #+4
+  xora([ctrlVideo])             #+5
+  st([ctrlVideo])               #+6
+  ctrl(X)                       #+7 next must be a load
+  extra += 7
 
 # vCPU interrupt
 ld([frameCount])                #69
@@ -4477,23 +4478,24 @@ if WITH_512K_BOARD:
   ld([vAC+1])                         #29
 elif WITH_128K_BOARD:
   st([ctrlCopy],X)                    #24
-  anda(0x3c)                          #25
-  ora(0x40)                           #26
-  st([ctrlVideo])                     #27
+  xora([ctrlVideo])                   #25
+  anda(0x3c)                          #26
+  xora([ctrlVideo])                   #27
   label('sysEx#28')
-  ld([vAC+1],Y)                       #28
-  ctrl(Y,X)                           #29 issue ctrl code
-  ld([ctrlCopy])                      #30 always read after ctrl
-  ld(hi('REENTER'),Y)                 #31
-  jmp(Y,'REENTER')                    #32
-  ld(-36/2)                           #33
+  st([ctrlVideo])                     #28
+  ld([vAC+1],Y)                       #29
+  ctrl(Y,X)                           #30 issue ctrl code
+  ld([ctrlCopy])                      #31 always read after ctrl
+  ld(hi('NEXTY'),Y)                   #32
+  jmp(Y,'NEXTY')                      #33
+  ld(-36/2)                           #34
   label('sysEx#22')
   anda(0xfc,X)                        #22 special ctrl code
   ld([vAC+1],Y)                       #23
   ctrl(Y,X)                           #24 issue special code
   ld([ctrlCopy],X)                    #25 from last time (hopefully)
   bra('sysEx#28')                     #26
-  nop()                               #27
+  ld([ctrlVideo])                     #27
 else:
   st([vTmp])                          #24 store in vTmp
   bra('sysEx#27')                     #25 jump to issuing normal ctrl code
