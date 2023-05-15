@@ -9589,10 +9589,19 @@ nop()                           #21
 bra('NEXT')                     #22
 ld(-24/2)                       #23
 label('macx#16b')
-ld('macx#3e')                   #16
-st([fsmState])                  #17
-bra('NEXT')                     #18
-ld(-20/2)                       #19
+ld([sysArgs+1])                 #16 restore sysArgs[0..3]
+st([sysArgs+0])                 #17
+ld([sysArgs+2])                 #18
+st([sysArgs+1])                 #19
+ld([sysArgs+3])                 #20
+st([sysArgs+2])                 #21
+ld([sysArgs+4])                 #22
+st([sysArgs+3])                 #23
+ld(hi('ENTER'))                 #24
+st([vCpuSelect])                #25
+adda(1,Y)                       #26
+jmp(Y,'NEXTY')                  #27
+ld(-30/2)                       #28
 
 label('macx#3c')
 ld([vLAX])                      #3 LAX += sysArgs[0..4]
@@ -9658,20 +9667,6 @@ st([fsmState])                  #25
 bra('NEXT')                     #26
 ld(-28/2)                       #27
 
-label('macx#3e')
-ld([sysArgs+1])                 #3 restore sysArgs[0..3]
-st([sysArgs+0])                 #4
-ld([sysArgs+2])                 #5
-st([sysArgs+1])                 #6
-ld([sysArgs+3])                 #7
-st([sysArgs+2])                 #8
-ld([sysArgs+4])                 #9
-st([sysArgs+3])                 #10
-ld(hi('ENTER'))                 #11
-st([vCpuSelect])                #12
-adda(1,Y)                       #13
-jmp(Y,'REENTER')                #14
-ld(-18/2)                       #15
 
 #----------------------------------------
 # MULQ
