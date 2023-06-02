@@ -75,7 +75,7 @@ dev7.rom: Core/* Apps/*/* Makefile interface.json
 		SYS_Racer_v1.py\
 		zippedRacerHorizon=Apps/Racer/Horizon-256x16.rgb\
 		Racer=Apps/Racer/Racer_v3.gcl\
-		Mandelbrot=Apps/Mandelbrot/Mandelbrot_v2.gt1\
+		Mandelbrot=Apps/Mandelbrot/Mandelbrot_v3.gt1\
 		Loader=Apps/Loader/Loader.gcl\
 		Bricks=Apps/Bricks/Bricks_v2.gt1\
 		Invader=Apps/Invader/Invader_v1.gt1\
@@ -147,7 +147,7 @@ proposedROMv6.rom: Core/* Apps/*/* Makefile interface.json
 		SYS_Racer_v1.py\
 		zippedRacerHorizon=Apps/Racer/Horizon-256x16.rgb\
 		Racer=Apps/Racer/Racer_v3.gcl\
-		Mandelbrot=Apps/Mandelbrot/Mandelbrot_v2.gt1\
+		Mandelbrot=Apps/Mandelbrot/Mandelbrot_v3.gt1\
 		SYS_Loader_vX.py\
 		Loader=Apps/Loader/Loader_v4.gcl\
 		Bricks=Apps/Bricks/Bricks_v2.gt1\

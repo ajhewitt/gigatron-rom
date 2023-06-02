@@ -14529,7 +14529,7 @@ Racer:        28c1 0002  ld   $02         ;| RAM segment address (high byte firs
               3087 00a0  ld   $a0
               3088 0000  ld   $00         ;End of Apps/Racer/Racer_v3.gcl, size 1992
                                           ;+-----------------------------------+
-                                          ;| Apps/Mandelbrot/Mandelbrot_v2.gt1 |
+                                          ;| Apps/Mandelbrot/Mandelbrot_v3.gt1 |
                                           ;+-----------------------------------+
               3089 dc52  st   $52,[y,x++] ;'R'
               308a dc61  st   $61,[y,x++] ;'a'
@@ -15643,16 +15643,16 @@ Mandelbrot:   3097 0002  ld   $02
               34de 0088  ld   $88
               34df 0021  ld   $21
               34e0 0087  ld   $87
-              34e1 002b  ld   $2b
-              34e2 0036  ld   $36
-              34e3 0021  ld   $21
-              34e4 008b  ld   $8b
-              34e5 0099  ld   $99
-              34e6 008b  ld   $8b
-              34e7 002b  ld   $2b
-              34e8 0030  ld   $30
-              34e9 00cf  ld   $cf
-              34ea 0042  ld   $42
+              34e1 0099  ld   $99
+              34e2 008b  ld   $8b
+              34e3 002b  ld   $2b
+              34e4 0036  ld   $36
+              34e5 00cf  ld   $cf
+              34e6 0044  ld   $44
+              34e7 00b8  ld   $b8
+              34e8 0089  ld   $89
+              34e9 00b8  ld   $b8
+              34ea 005a  ld   $5a
               34eb 0099  ld   $99
               34ec 0052  ld   $52
               34ed 002b  ld   $2b
@@ -15818,7 +15818,7 @@ Mandelbrot:   3097 0002  ld   $02
               358d 001a  ld   $1a
               358e 00ff  ld   $ff
               358f 0000  ld   $00
-              3590 0000  ld   $00         ;End of Apps/Mandelbrot/Mandelbrot_v2.gt1, size 1274
+              3590 0000  ld   $00         ;End of Apps/Mandelbrot/Mandelbrot_v3.gt1, size 1274
                                           ;+-----------------------------------+
                                           ;| SYS_Loader_vX.py                  |
                                           ;+-----------------------------------+
